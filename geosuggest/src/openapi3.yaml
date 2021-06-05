@@ -1,0 +1,33 @@
+openapi: 3.0.0
+info:
+  title: geosuggest 
+  version: 0.1.0
+paths:
+  /api/city/suggest:
+    get:
+      tags:
+      - suggest
+      description: suggest city by text input
+      parameters:
+        {{SuggestQuery}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                {{SuggestResult}}
+  /api/city/reverse:
+    get:
+      tags:
+      - reverse
+      description: find city by coordinates 
+      parameters:
+        {{ReverseQuery}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                {{ReverseResult}}
+definitions:
+  {{oaph::definitions}}

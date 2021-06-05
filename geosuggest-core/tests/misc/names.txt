@@ -1,0 +1,26 @@
+289156	472045		Woronesh						
+1615889	472045	de	Woronesch						
+1615890	472045	en	Voronezh						
+1615891	472045	bg	Воронеж						
+1615892	472045	cs	Voroněž						
+1615893	472045	eo	Voroneĵ						
+1615894	472045	et	Voronež						
+1615895	472045	fr	Voronej						
+1615896	472045	ko	보로네시						
+1615897	472045	lt	Voronežas						
+1615898	472045	lv	Voroņeža						
+1615899	472045	nl	Voronezj						
+1615900	472045	pl	Woroneż						
+1615901	472045	ru	Воронеж	1					
+1615902	472045	sl	Voronež						
+1638431	472045	fi	Voronež						
+1902813	472045	it	Voronezh						
+1902814	472045	ja	ヴォロネジ						
+1902815	472045	pt	Voronezh						
+1991477	472045	it	Voronež						
+2181371	472045	ru	Воронежская область						
+2923673	472045	link	https://en.wikipedia.org/wiki/Voronezh						
+3047887	472045	link	https://ru.wikipedia.org/wiki/%D0%92%D0%BE%D1%80%D0%BE%D0%BD%D0%B5%D0%B6						
+3724193	472045		Voronezh						
+7481699	472045	iata	VOZ						
+13797596	472045	unlc	RUVOZ						

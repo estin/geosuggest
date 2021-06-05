@@ -1,0 +1,19 @@
+[package]
+name = "geosuggest-utils"
+version = "0.1.0"
+edition = "2018"
+
+
+[[bin]]
+name = "geosuggest-build-index"
+path = "src/build-index.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+env_logger = "0.8"
+
+geosuggest-core = { path = "../geosuggest-core" }
+
+getopts = "0.2"
