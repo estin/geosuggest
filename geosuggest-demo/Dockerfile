@@ -43,11 +43,14 @@ COPY --from=0 /opt/$GEOSUGGEST_INDEX /opt/$GEOSUGGEST_INDEX
 
 # default configuration
 EXPOSE $PORT
+ENV GEOSUGGEST_CONFIG_FILE="/opt/geosuggest-settings.toml"
+ENV RUST_LOG=geosuggest=trace
+
 RUN echo "host = '0.0.0.0'" >> /opt/geosuggest-settings.toml \
-    && echo "port = '$PORT'" >> /opt/geosuggest-settings.toml \
+    && echo "port = 8000 # see GEOSUGGEST_PORT" >> /opt/geosuggest-settings.toml \
     && echo "index_file = '/opt/$GEOSUGGEST_INDEX'" >> /opt/geosuggest-settings.toml \
     && echo "static_dir = '/opt/geosuggest-static'" >> /opt/geosuggest-settings.toml
 
+# pass $PORT to $GEOSUGGEST_PORT
 ENTRYPOINT []
-ENV GEOSUGGEST_CONFIG_FILE="/opt/geosuggest-settings.toml"
-CMD geosuggest
+CMD GEOSUGGEST_PORT=$PORT geosuggest

@@ -156,6 +156,9 @@ async fn main() -> std::io::Result<()> {
     let shared_engine_clone = shared_engine.clone();
     let settings_clone = settings.clone();
 
+    let listen_on = format!("{}:{}", settings.host, settings.port);
+    log::info!("Listen on {}", listen_on);
+
     web::server(move || {
         let shared_engine = shared_engine_clone.clone();
         let settings = settings_clone.clone();
@@ -180,7 +183,7 @@ async fn main() -> std::io::Result<()> {
                 }
             })
     })
-    .bind(format!("{}:{}", settings.host, settings.port))?
+    .bind(listen_on)?
     .run()
     .await
 }
