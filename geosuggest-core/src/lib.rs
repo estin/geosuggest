@@ -116,7 +116,7 @@ impl Engine {
         }
         self.search(&pattern.to_lowercase(), limit)
             .iter()
-            .filter_map(|item| self.geonames.get(&item))
+            .filter_map(|item| self.geonames.get(item))
             .collect::<Vec<&CitiesRecord>>()
     }
 

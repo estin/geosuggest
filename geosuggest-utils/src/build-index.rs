@@ -58,7 +58,7 @@ fn main() -> std::io::Result<()> {
     let languages_filter = matches
         .opt_str("l")
         .map(|v| {
-            v.split(",")
+            v.split(',')
                 .map(|i| i.trim().to_owned())
                 .collect::<Vec<String>>()
         })

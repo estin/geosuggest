@@ -86,7 +86,7 @@ pub async fn suggest(
             suggest_query.limit.unwrap_or(10),
         )
         .iter()
-        .map(|item| CityResultItem::from_city(&item, suggest_query.lang.as_deref()))
+        .map(|item| CityResultItem::from_city(item, suggest_query.lang.as_deref()))
         .collect::<Vec<CityResultItem>>();
     HttpResponse::Ok().json(&SuggestResult {
         time: now.elapsed().as_millis() as usize,
@@ -154,15 +154,22 @@ async fn main() -> std::io::Result<()> {
     );
 
     let shared_engine_clone = shared_engine.clone();
+    let settings_clone = settings.clone();
 
     web::server(move || {
         let shared_engine = shared_engine_clone.clone();
+        let settings = settings_clone.clone();
 
         App::new()
             // enable logger
             .data(shared_engine)
             .wrap(middleware::Logger::default())
             .wrap(Cors::default())
+            .configure(move |cfg: &mut web::ServiceConfig| {
+                if let Some(static_dir) = settings.static_dir.as_ref() {
+                    cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));
+                }
+            })
             .service((
                 // api
                 web::resource("/api/city/suggest").to(suggest),

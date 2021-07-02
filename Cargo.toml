@@ -3,6 +3,7 @@ members = [
   "geosuggest",
   "geosuggest-core",
   "geosuggest-utils",
+  "geosuggest-demo",
 ]
 
 [patch.crates-io]

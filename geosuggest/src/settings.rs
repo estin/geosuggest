@@ -10,6 +10,7 @@ pub struct Settings {
     pub host: String,
     pub port: usize,
     pub index_file: String,
+    pub static_dir: Option<String>,
 }
 
 impl Settings {
@@ -41,6 +42,7 @@ impl Default for Settings {
                 .into_os_string()
                 .into_string()
                 .unwrap(),
+            static_dir: None,
         }
     }
 }
