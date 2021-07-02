@@ -4,7 +4,6 @@ This is a demonstrating how to [geosuggest](https://github.com/estin/geosuggest)
 
 [Live demo](https://geosuggest.herokuapp.com/) on [Heroku](https://heroku.com) free quota:
 - Please be patient, it will take some time for the app to wake up
-- scheduler would work only on running app (the default interval is 1 minute)
 
 In Dockerfile:
  - download and compile [geosuggest](https://github.com/estin/cywad) backend
