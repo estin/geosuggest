@@ -165,11 +165,6 @@ async fn main() -> std::io::Result<()> {
             .data(shared_engine)
             .wrap(middleware::Logger::default())
             .wrap(Cors::default())
-            .configure(move |cfg: &mut web::ServiceConfig| {
-                if let Some(static_dir) = settings.static_dir.as_ref() {
-                    cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));
-                }
-            })
             .service((
                 // api
                 web::resource("/api/city/suggest").to(suggest),
@@ -179,6 +174,11 @@ async fn main() -> std::io::Result<()> {
                 fs::Files::new("/swagger", std::env::temp_dir()).index_file("swagger-ui.html"),
                 fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
             ))
+            .configure(move |cfg: &mut web::ServiceConfig| {
+                if let Some(static_dir) = settings.static_dir.as_ref() {
+                    cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));
+                }
+            })
     })
     .bind(format!("{}:{}", settings.host, settings.port))?
     .run()

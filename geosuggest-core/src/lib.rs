@@ -391,7 +391,11 @@ impl Engine {
         Ok(())
     }
 
-    pub fn load_from_json<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Self> {
+    pub fn load_from_json<P: std::string::ToString + AsRef<std::path::Path>>(
+        path: P,
+    ) -> std::io::Result<Self> {
+        log::info!("Engine starts load from file {}", path.to_string());
+
         let now = Instant::now();
         let file = std::fs::OpenOptions::new()
             .create(false)

@@ -15,8 +15,9 @@ In Dockerfile:
 For local build&start
 ```bash
 $ docker build \
-    --build-arg GEOSUGGEST_BASE_API_URL="http://127.0.0.1" \
+    --build-arg PORT="8000" \
+    --build-arg GEOSUGGEST_BASE_API_URL="http://127.0.0.1:8000" \
     --build-arg GEOSUGGEST_RELEASE="master" \
     -t geosuggest-demo .
-$ docker run --rm -e PORT=8000 -p 8000:8000 -it geosuggest-demo
+$ docker run --rm -e PORT=8000 -e RUST_LOG=geosuggest=info -p 8000:8000 -it geosuggest-demo
 ```

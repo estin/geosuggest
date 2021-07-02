@@ -16,7 +16,6 @@ RUN cd /root \
     && cargo build --release
 
 # index
-
 RUN cd /tmp \ 
     && curl -sL http://download.geonames.org/export/dump/cities15000.zip --output cities1500.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output alternateNamesV2.zip \
@@ -39,13 +38,14 @@ ARG PORT=$PORT
 ARG GEOSUGGEST_INDEX=geosuggest-index.json
 
 COPY --from=0 /root/geosuggest-release/target/release/geosuggest /usr/bin
-# COPY --from=0 /root/geosuggest-ui-release /opt/geosuggest-static
+COPY --from=0 /root/geosuggest-demo-release /opt/geosuggest-static
 COPY --from=0 /opt/$GEOSUGGEST_INDEX /opt/$GEOSUGGEST_INDEX
 
 # default configuration
+EXPOSE $PORT
 RUN echo "host = '0.0.0.0'" >> /opt/geosuggest-settings.toml \
     && echo "port = '$PORT'" >> /opt/geosuggest-settings.toml \
-    && echo "index_file = '/opt/$GEOSUGGEST_INDEX'" >> /opt/geosuggest-settings.toml
+    && echo "index_file = '/opt/$GEOSUGGEST_INDEX'" >> /opt/geosuggest-settings.toml \
     && echo "static_dir = '/opt/geosuggest-static'" >> /opt/geosuggest-settings.toml
 
 ENTRYPOINT []
