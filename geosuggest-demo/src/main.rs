@@ -101,11 +101,11 @@ pub struct ReverseResult {
 }
 
 impl Model {
-    fn suggest(&mut self, text: &str) {
+    fn suggest(&mut self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
         if text.is_empty() {
             self.suggest_items = None;
             self.suggest_selected_item = None;
-            return;
+            return Ok(());
         }
 
         self.loading = true;
@@ -117,7 +117,7 @@ impl Model {
         };
         let request = Request::get(get_api_url(&format!(
             "/api/city/suggest?{}",
-            serde_qs::to_string(&query).unwrap(),
+            serde_qs::to_string(&query)?,
         )))
         .header("Access-Control-Request-Method", "GET")
         .body(Nothing)
@@ -127,8 +127,6 @@ impl Model {
             |response: Response<Json<Result<SuggestResult, anyhow::Error>>>| {
                 if let (meta, Json(Ok(body))) = response.into_parts() {
                     if meta.status.is_success() {
-                        log::info!("Data: {:?}", serde_json::to_string(&body));
-                        // return Msg::SuggestResult(serde_json::to_string(&body).unwrap());
                         return Msg::SuggestResult(body);
                     }
                 }
@@ -136,7 +134,7 @@ impl Model {
             },
         );
 
-        self._ft = FetchService::fetch_with_options(
+        self._ft = Some(FetchService::fetch_with_options(
             request,
             FetchOptions {
                 mode: Some(Mode::Cors),
@@ -144,10 +142,11 @@ impl Model {
                 ..FetchOptions::default()
             },
             callback,
-        )
-        .ok();
+        )?);
+
+        Ok(())
     }
-    fn reverse(&mut self) {
+    fn reverse(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         match (self.reverse_lat, self.reverse_lng) {
             (Some(lat), Some(lng)) => {
                 ConsoleService::log(&format!("Rerverse find {} {}", lat, lng));
@@ -160,7 +159,7 @@ impl Model {
                 };
                 let request = Request::get(get_api_url(&format!(
                     "/api/city/reverse?{}",
-                    serde_qs::to_string(&query).unwrap(),
+                    serde_qs::to_string(&query)?,
                 )))
                 .header("Access-Control-Request-Method", "GET")
                 .body(Nothing)
@@ -181,7 +180,7 @@ impl Model {
                     },
                 );
 
-                self._ft = FetchService::fetch_with_options(
+                self._ft = Some(FetchService::fetch_with_options(
                     request,
                     FetchOptions {
                         mode: Some(Mode::Cors),
@@ -189,13 +188,14 @@ impl Model {
                         ..FetchOptions::default()
                     },
                     callback,
-                )
-                .ok();
+                )?)
             }
             _ => {
                 ConsoleService::log(&"not valid reverse input data".to_string());
             }
         }
+
+        Ok(())
     }
 }
 
@@ -248,10 +248,11 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::SuggestInput(v) => {
-                log::info!("Suggest input is {}", v);
                 self.suggest_items = None;
                 self.reverse_result = None;
-                self.suggest(v.as_str());
+                if let Err(e) = self.suggest(v.as_str()) {
+                    ConsoleService::log(&format!("Error: {}", e));
+                }
                 true
             }
             Msg::SuggestResult(result) => {
@@ -300,7 +301,9 @@ impl Component for Model {
                 self.reverse_result = None;
                 self.suggest_items = None;
                 self.suggest_selected_item = None;
-                self.reverse();
+                if let Err(e) = self.reverse() {
+                    ConsoleService::log(&format!("Error: {}", e));
+                }
                 true
             }
             Msg::ReverseResult(result) => {
@@ -365,11 +368,13 @@ impl Component for Model {
             &self.suggest_items,
         ) {
             (Some(item), _, _) => {
-                let pretty = serde_json::to_string_pretty(&item).unwrap();
+                let pretty =
+                    serde_json::to_string_pretty(&item).unwrap_or_else(|e| format!("Error: {}", e));
                 html! { <div class="w-full px-2 py-1 pb-4"><p class="font-semibold">{ "Reverse result:" }</p><code><pre>{ pretty }</pre></code></div> }
             }
             (None, Some(index), Some(items)) => {
-                let pretty = serde_json::to_string_pretty(&items[index]).unwrap();
+                let pretty = serde_json::to_string_pretty(&items[index])
+                    .unwrap_or_else(|e| format!("Error: {}", e));
                 html! { <div class="w-full px-2 py-1 pb-4"><p class="font-semibold">{ "Suggest result:" }</p><code><pre>{ pretty }</pre></code></div> }
             }
             _ => html! {},

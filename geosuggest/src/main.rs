@@ -175,6 +175,10 @@ async fn main() -> std::io::Result<()> {
     // generate files for openapi3.yaml and swagger ui
     generate_openapi_files().expect("On generate openapi3 files");
 
+    if settings.index_file.is_empty() {
+        panic!("Please set `index_file`");
+    }
+
     let shared_engine = Arc::new(
         Engine::load_from_json(&settings.index_file).unwrap_or_else(|e| {
             panic!("On build engine from file: {} - {}", settings.index_file, e)

@@ -148,11 +148,17 @@ impl Engine {
             Ok(nearest) => Some(nearest),
             Err(error) => match error {
                 kdtree::ErrorKind::WrongDimension => {
-                    panic!("Internal error, kdtree::ErrorKind::WrongDimension should never occur")
+                    log::error!(
+                        "Internal error, kdtree::ErrorKind::WrongDimension should never occur"
+                    );
+                    None
                 }
                 kdtree::ErrorKind::NonFiniteCoordinate => None,
                 kdtree::ErrorKind::ZeroCapacity => {
-                    panic!("Internal error, kdtree::ErrorKind::ZeroCapacity should never occur")
+                    log::error!(
+                        "Internal error, kdtree::ErrorKind::ZeroCapacity should never occur"
+                    );
+                    None
                 }
             },
         }
@@ -184,16 +190,18 @@ impl Engine {
                 .collect::<Vec<(f64, f64, usize)>>();
 
             // points.sort_by_key(|i| i.0);
-            points.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+            points.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
             Some(
                 points
                     .iter()
                     .take(limit)
-                    .map(|p| ReverseItem {
-                        distance: p.0,
-                        score: p.1,
-                        city: self.geonames.get(&p.2).unwrap(),
+                    .filter_map(|p| {
+                        Some(ReverseItem {
+                            distance: p.0,
+                            score: p.1,
+                            city: self.geonames.get(&p.2)?,
+                        })
                     })
                     .collect(),
             )
@@ -201,10 +209,12 @@ impl Engine {
             Some(
                 self._nearest(loc, limit)?
                     .iter()
-                    .map(|p| ReverseItem {
-                        distance: p.0,
-                        score: p.0,
-                        city: self.geonames.get(&p.1.geonameid).unwrap(),
+                    .filter_map(|p| {
+                        Some(ReverseItem {
+                            distance: p.0,
+                            score: p.0,
+                            city: self.geonames.get(&p.1.geonameid)?,
+                        })
                     })
                     .collect(),
             )
@@ -228,7 +238,11 @@ impl Engine {
             .collect::<Vec<(usize, f64)>>();
 
         // sort by score
-        result.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap());
+        result.sort_by(|lhs, rhs| {
+            rhs.1
+                .partial_cmp(&lhs.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // collect result
         let mut items: Vec<usize> = Vec::with_capacity(limit);
@@ -272,9 +286,9 @@ impl Engine {
 
             rdr.deserialize()
                 .into_iter()
-                .map(|row| {
-                    let record: CitiesRecordRaw = row.unwrap();
-                    record
+                .filter_map(|row| {
+                    let record: CitiesRecordRaw = row.ok()?;
+                    Some(record)
                 })
                 .collect::<Vec<CitiesRecordRaw>>()
         })
@@ -314,7 +328,8 @@ impl Engine {
                             HashMap::new();
 
                         for row in rdr.deserialize().into_iter() {
-                            let record: AlternateNamesRaw = row.unwrap();
+                            let record: AlternateNamesRaw =
+                                if let Ok(r) = row { r } else { continue };
 
                             if !geoids.contains(&record.geonameid) {
                                 continue;
@@ -498,7 +513,9 @@ impl Engine {
         Ok(())
     }
 
-    pub fn load_from_json<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Self> {
+    pub fn load_from_json<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         log::info!("Engine starts load index from file...");
 
         let now = Instant::now();
@@ -518,8 +535,7 @@ impl Engine {
                     population: record.population,
                     geonameid: *geonameid,
                 },
-            )
-            .unwrap();
+            )?
         }
 
         let engine = Engine {
