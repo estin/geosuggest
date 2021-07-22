@@ -49,7 +49,7 @@ struct CitiesRecordRaw {
     admin2_code: String,
     admin3_code: String,
     admin4_code: String,
-    population: String,
+    population: usize,
     elevation: String,
     dem: String,
     timezone: String,
@@ -82,7 +82,7 @@ struct AlternateNamesRaw {
     to: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
 pub struct CitiesRecord {
     pub id: usize,
@@ -92,6 +92,15 @@ pub struct CitiesRecord {
     pub country_code: String,
     pub timezone: String,
     pub names: Option<HashMap<String, String>>,
+    pub population: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
+pub struct ReverseItem<'a> {
+    pub city: &'a CitiesRecord,
+    pub distance: f64,
+    pub score: f64,
 }
 
 #[derive(Deserialize)]
@@ -100,53 +109,117 @@ struct EngineDump {
     geonames: HashMap<usize, CitiesRecord>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct KdTreeEntry {
+    pub geonameid: usize,
+    pub population: usize,
+}
+
 #[derive(Serialize)]
 pub struct Engine {
     entries: Vec<(usize, String)>,
     geonames: HashMap<usize, CitiesRecord>,
 
     #[serde(skip_serializing)]
-    tree: KdTree<f64, usize, [f64; 2]>,
+    tree: KdTree<f64, KdTreeEntry, [f64; 2]>,
 }
 
 impl Engine {
-    pub fn suggest(&self, pattern: &str, limit: usize) -> Vec<&CitiesRecord> {
+    pub fn suggest(
+        &self,
+        pattern: &str,
+        limit: usize,
+        min_score: Option<f64>,
+    ) -> Vec<&CitiesRecord> {
         if limit == 0 {
             return Vec::new();
         }
-        self.search(&pattern.to_lowercase(), limit)
+        self.search(&pattern.to_lowercase(), limit, min_score)
             .iter()
             .filter_map(|item| self.geonames.get(item))
             .collect::<Vec<&CitiesRecord>>()
     }
 
-    pub fn reverse(&self, loc: (f64, f64)) -> Option<&CitiesRecord> {
-        let nearest = match self.tree.nearest(&[loc.0, loc.1], 1, &squared_euclidean) {
-            Ok(nearest) => nearest,
+    fn _nearest(&self, loc: (f64, f64), limit: usize) -> Option<Vec<(f64, &KdTreeEntry)>> {
+        match self
+            .tree
+            .nearest(&[loc.0, loc.1], limit, &squared_euclidean)
+        {
+            Ok(nearest) => Some(nearest),
             Err(error) => match error {
                 kdtree::ErrorKind::WrongDimension => {
                     panic!("Internal error, kdtree::ErrorKind::WrongDimension should never occur")
                 }
-                kdtree::ErrorKind::NonFiniteCoordinate => return None,
+                kdtree::ErrorKind::NonFiniteCoordinate => None,
                 kdtree::ErrorKind::ZeroCapacity => {
                     panic!("Internal error, kdtree::ErrorKind::ZeroCapacity should never occur")
                 }
             },
-        };
-        match nearest.get(0) {
-            Some(nearest) => Some(self.geonames.get(nearest.1).unwrap()),
-            None => None,
         }
     }
 
-    fn search(&self, pattern: &str, limit: usize) -> Vec<usize> {
+    pub fn reverse(
+        &self,
+        loc: (f64, f64),
+        limit: usize,
+        k: Option<f64>,
+    ) -> Option<Vec<ReverseItem>> {
+        if limit == 0 {
+            return None;
+        }
+        let k = k.unwrap_or(0.0);
+        if k != 0.0 {
+            // use population as point weight
+            let mut points = self
+                // find N * 10 cities and sort them by score
+                ._nearest(loc, limit * 10)?
+                .iter()
+                .map(|item| {
+                    (
+                        item.0,
+                        item.0 - k * item.1.population as f64,
+                        item.1.geonameid,
+                    )
+                })
+                .collect::<Vec<(f64, f64, usize)>>();
+
+            // points.sort_by_key(|i| i.0);
+            points.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+            Some(
+                points
+                    .iter()
+                    .take(limit)
+                    .map(|p| ReverseItem {
+                        distance: p.0,
+                        score: p.1,
+                        city: self.geonames.get(&p.2).unwrap(),
+                    })
+                    .collect(),
+            )
+        } else {
+            Some(
+                self._nearest(loc, limit)?
+                    .iter()
+                    .map(|p| ReverseItem {
+                        distance: p.0,
+                        score: p.0,
+                        city: self.geonames.get(&p.1.geonameid).unwrap(),
+                    })
+                    .collect(),
+            )
+        }
+    }
+
+    fn search(&self, pattern: &str, limit: usize, min_score: Option<f64>) -> Vec<usize> {
+        let min_score = min_score.unwrap_or(0.8);
         // search on whole index
         let mut result = self
             .entries
             .par_iter()
             .filter_map(|item| {
                 let score = jaro_winkler(&item.1, pattern);
-                if score > 0.8 {
+                if score > min_score {
                     Some((item.0, score))
                 } else {
                     None
@@ -162,6 +235,7 @@ impl Engine {
         let mut set: HashSet<usize> = HashSet::new();
         let mut count: usize = 0;
         for item in result {
+            // exclude dublicates
             if set.contains(&item.0) {
                 continue;
             }
@@ -321,12 +395,44 @@ impl Engine {
         let mut tree = KdTree::with_capacity(2, records.len());
 
         for record in records {
+            // INCLUDE:
+            // PPL	populated place	a city, town, village, or other agglomeration of buildings where people live and work
+            // PPLA	seat of a first-order administrative division	seat of a first-order administrative division (PPLC takes precedence over PPLA)
+            // PPLC	capital of a political entity
+            // PPLS	populated places	cities, towns, villages, or other agglomerations of buildings where people live and work
+            // PPLG	seat of government of a political entity
+            // PPLCH	historical capital of a political entity	a former capital of a political entity
+            //
+            // EXCLUDE:
+            // PPLA2	seat of a second-order administrative division
+            // PPLA3	seat of a third-order administrative division
+            // PPLA4	seat of a fourth-order administrative division
+            // PPLA5	seat of a fifth-order administrative division
+            // PPLF farm village	a populated place where the population is largely engaged in agricultural activities
+            // PPLL	populated locality	an area similar to a locality but with a small group of dwellings or other buildings
+            // PPLQ	abandoned populated place
+            // PPLW	destroyed populated place	a village, town or city destroyed by a natural disaster, or by war
+            // PPLX	section of populated place
+            // STLMT israeli settlement
+            //
+            match record.feature_code.as_str() {
+                "PPLA2" | "PPLA3" | "PPLA4" | "PPLA5" | "PPLF" | "PPLL" | "PPLQ" | "PPLW"
+                | "PPLX" | "STLMT" => continue,
+                _ => {}
+            };
+
             // prevent dublicates
             if geonames.contains_key(&record.geonameid) {
                 continue;
             }
-            tree.add([record.latitude, record.longitude], record.geonameid)
-                .unwrap();
+
+            tree.add(
+                [record.latitude, record.longitude],
+                KdTreeEntry {
+                    geonameid: record.geonameid,
+                    population: record.population,
+                },
+            )?;
 
             entries.push((record.geonameid, record.name.to_lowercase().to_owned()));
 
@@ -353,6 +459,7 @@ impl Engine {
                         Some(ref mut names) => names.remove(&record.geonameid),
                         None => None,
                     },
+                    population: record.population,
                 },
             );
         }
@@ -405,8 +512,14 @@ impl Engine {
 
         let mut tree = KdTree::with_capacity(2, engine_dump.geonames.len());
         for (geonameid, record) in &engine_dump.geonames {
-            tree.add([record.latitude, record.longitude], *geonameid)
-                .unwrap();
+            tree.add(
+                [record.latitude, record.longitude],
+                KdTreeEntry {
+                    population: record.population,
+                    geonameid: *geonameid,
+                },
+            )
+            .unwrap();
         }
 
         let engine = Engine {

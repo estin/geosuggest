@@ -18,6 +18,14 @@ pub struct CityResultItem {
     timezone: String,
     latitude: f64,
     longitude: f64,
+    population: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ReverseItem {
+    pub city: CityResultItem,
+    pub distance: f64,
+    pub score: f64,
 }
 
 pub enum Msg {
@@ -31,6 +39,8 @@ pub enum Msg {
     ReverseFind,
     ReverseResult(ReverseResult),
     MapDblClick(f64, f64),
+    MinScoreInput(String),
+    DistanceCoefficient(String),
 }
 
 pub struct Model {
@@ -41,11 +51,14 @@ pub struct Model {
     reverse_lng: Option<f64>,
     reverse_lat: Option<f64>,
     _ft: Option<FetchTask>,
-    reverse_result: Option<CityResultItem>,
+    reverse_result: Option<ReverseItem>,
     loading: bool,
     map_dblclick_closure: Closure<dyn FnMut(f64, f64)>,
+    min_score: String,
+    distance_coefficient: String,
 }
 
+#[inline]
 fn get_api_url(method: &str) -> String {
     format!(
         "{}{}",
@@ -60,6 +73,7 @@ pub struct SuggestQuery<'a> {
     limit: Option<usize>,
     /// isolanguage code
     lang: Option<&'a str>,
+    min_score: Option<f64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -75,11 +89,13 @@ pub struct ReverseQuery<'a> {
     lng: f64,
     /// isolanguage code
     lang: Option<&'a str>,
+    /// population weight
+    k: Option<f64>,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct ReverseResult {
-    item: CityResultItem,
+    items: Vec<ReverseItem>,
     /// elapsed time in ms
     time: usize,
 }
@@ -97,6 +113,7 @@ impl Model {
             pattern: text,
             limit: Some(5),
             lang: self.lang.as_deref(),
+            min_score: self.min_score.parse().ok(),
         };
         let request = Request::get(get_api_url(&format!(
             "/api/city/suggest?{}",
@@ -139,6 +156,7 @@ impl Model {
                     lat,
                     lng,
                     lang: self.lang.as_deref(),
+                    k: self.distance_coefficient.parse().ok(),
                 };
                 let request = Request::get(get_api_url(&format!(
                     "/api/city/reverse?{}",
@@ -181,6 +199,20 @@ impl Model {
     }
 }
 
+// fn tooltip(text: &str) -> Html {
+//     html! {
+//         <div class="relative flex flex-col items-center group inline-block">
+//            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+//                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+//            </svg>
+//            <div class="absolute bottom-0 flex flex-col items-center hidden mb-6 group-hover:flex">
+//                <span class="relative z-10 p-2 text-xs leading-none text-white whitespace-no-wrap bg-black shadow-lg">{text}</span>
+//                <div class="w-3 h-3 -mt-2 rotate-45 bg-black"></div>
+//            </div>
+//        </div>
+//     }
+// }
+
 impl Component for Model {
     type Message = Msg;
     type Properties = ();
@@ -198,6 +230,8 @@ impl Component for Model {
             reverse_lat: None,
             reverse_lng: None,
             reverse_result: None,
+            min_score: 0.8.to_string(),
+            distance_coefficient: 0.000000005.to_string(),
             map_dblclick_closure: Closure::wrap(Box::new(move |lat: f64, lng: f64| {
                 ConsoleService::log(&format!("map doubl click {} {}", lat, lng));
                 link_clone.send_message(Msg::MapDblClick(lat, lng));
@@ -271,13 +305,23 @@ impl Component for Model {
             }
             Msg::ReverseResult(result) => {
                 self.loading = false;
-                self.reverse_result = Some(result.item);
+                self.reverse_result = result.items.into_iter().next();
                 true
             }
             Msg::MapDblClick(lat, lng) => {
                 self.reverse_lat = Some(lat);
                 self.reverse_lng = Some(lng);
                 self.link.send_message(Msg::ReverseFind);
+                true
+            }
+            Msg::MinScoreInput(value) => {
+                ConsoleService::log(&format!("MinScoreInput input {}", value));
+                self.min_score = value;
+                true
+            }
+            Msg::DistanceCoefficient(value) => {
+                ConsoleService::log(&format!("DistanceCoefficient input {}", value));
+                self.distance_coefficient = value;
                 true
             }
 
@@ -296,7 +340,7 @@ impl Component for Model {
                     html! {}
                 } else {
                     html! {
-                        <aside role="menu" aria-labelledby="menu-heading" class="absolute z-10 flex flex-col items-start w-64 bg-white border rounded-md shadow-md mt-1">
+                        <aside role="menu" class="absolute z-10 flex flex-col items-start w-64 bg-white border rounded-md shadow-md mt-1">
                             <ul class="flex flex-col w-full">
                             { items.iter().enumerate().map(|(index, item)| html! {
                                 <li onclick=self.link.callback(move |_| Msg::SuggestItemSelected(index)) class="px-2 py-3 space-x-2 hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white focus:outline-none ">{ &item.name } {" "} { &item.country_code }</li>
@@ -315,18 +359,18 @@ impl Component for Model {
             }
         };
 
-        let result_item = match (
+        let result_node = match (
             &self.reverse_result,
             self.suggest_selected_item,
             &self.suggest_items,
         ) {
             (Some(item), _, _) => {
                 let pretty = serde_json::to_string_pretty(&item).unwrap();
-                html! { <code><pre>{ pretty }</pre></code> }
+                html! { <div class="w-full px-2 py-1 pb-4"><p class="font-semibold">{ "Reverse result:" }</p><code><pre>{ pretty }</pre></code></div> }
             }
             (None, Some(index), Some(items)) => {
                 let pretty = serde_json::to_string_pretty(&items[index]).unwrap();
-                html! { <code><pre>{ pretty }</pre></code> }
+                html! { <div class="w-full px-2 py-1 pb-4"><p class="font-semibold">{ "Suggest result:" }</p><code><pre>{ pretty }</pre></code></div> }
             }
             _ => html! {},
         };
@@ -340,7 +384,30 @@ impl Component for Model {
                     <div class="flex flex-row w-full max-w lg:w-1/2 xl:w-1/4 justify-center align-top mb-auto mx-4">
                         <div class="flex flex-col items-start justify-between h-auto my-4 overflow-hidden bg-white rounded-lg shadow-xl">
                             <div class="flex flex-row items-baseline justify-around w-full p-1 pt-4 pb-0 mb-0">
-                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{ "Typeahead" }</h2>
+                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{ "Settings" }</h2>
+                            </div>
+                            <div class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400">
+                                <div class="flex flex-col items-center justify-between py-1">
+                                    <div class="w-full mt-1">
+                                        <label class="block text-gray-700 text-sm font-bold mb-2" for="min_score">
+                                            {"Suggest: Jaro Winkler min score"}
+                                        </label>
+                                        <div class="mt-1 rounded-md shadow-sm">
+                                            <input id="min_score" value=self.min_score.clone() type="number" min="0" max="1" oninput=self.link.callback(|event: InputData| Msg::MinScoreInput(event.value)) class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
+                                        </div>
+                                    </div>
+                                    <div class="w-full mt-1">
+                                        <label class="block text-gray-700 text-sm font-bold mb-2" for="distance_coefficient">
+                                            {"Reverse: Distance correction coefficient by population"}
+                                        </label>
+                                        <div class="mt-1 rounded-md shadow-sm">
+                                            <input id="distance_coefficient" value=self.distance_coefficient.clone() type="number" oninput=self.link.callback(|event: InputData| Msg::DistanceCoefficient(event.value)) class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex flex-row items-baseline justify-around w-full p-1 pt-4 pb-0 mb-0">
+                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{ "1. Suggest" }</h2>
                             </div>
                             <div class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400">
                                 <div class="flex flex-row items-center justify-between py-1">
@@ -348,7 +415,7 @@ impl Component for Model {
                                         <div class="flex">
                                             <div class="w-5/6">
                                                 <div class="mt-1 flex rounded-md shadow-sm">
-                                                    <input oninput=self.link.callback(|event: InputData| Msg::SuggestInput(event.value)) type="text" placeholder="Please write a country name" aria-label="Search" class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
+                                                    <input oninput=self.link.callback(|event: InputData| Msg::SuggestInput(event.value)) type="text" placeholder="Please write a city name" class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
                                                 </div>
                                             </div>
                                             <div class="ml-1 mt-1 w-1/6 flex rounded-md shadow-sm">
@@ -367,7 +434,7 @@ impl Component for Model {
                                 </div>
                             </div>
                             <div class="flex flex-row items-baseline justify-around w-full p-1 pb-0 mb-0">
-                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{"Nearest city to"}</h2>
+                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{"2. Reverse (dbl-click on map)"}</h2>
                             </div>
                             <div class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400">
                                 <div class="flex flex-row items-center justify-between py-1">
@@ -382,9 +449,13 @@ impl Component for Model {
                                     </div>
                                 </div>
                             </div>
-                            <div class="w-full px-2 py-1 pb-4">
-                                <p class="font-semibold">{ "Selected:" }</p>
-                                <p>{ result_item }</p>
+                            { result_node }
+                            <hr/>
+                            <div class="flex w-full p-1 mb-1">
+                                <h4 class="font-semibold">{"API: "}</h4>
+                                <a class="mx-1 text-blue-500" href="/swagger">{"Swagger"}</a>
+                                { " / " }
+                                <a class="mx-1 text-blue-500" href="/redoc">{"ReDoc"}</a>
                             </div>
                         </div>
                     </div>

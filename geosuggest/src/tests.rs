@@ -76,8 +76,20 @@ async fn api_reverse() -> Result<(), Error> {
     let bytes = test::read_body(resp).await;
 
     let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let item = result.get("item").unwrap().as_object().unwrap();
-    assert_eq!(item.get("name").unwrap().as_str().unwrap(), "Voronezh");
+    let items = result.get("items").unwrap().as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]
+            .get("city")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Voronezh"
+    );
 
     Ok(())
 }
@@ -96,8 +108,20 @@ async fn api_reverse_lang() -> Result<(), Error> {
     let bytes = test::read_body(resp).await;
 
     let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let item = result.get("item").unwrap().as_object().unwrap();
-    assert_eq!(item.get("name").unwrap().as_str().unwrap(), "Воронеж");
+    let items = result.get("items").unwrap().as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]
+            .get("city")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Воронеж"
+    );
 
     Ok(())
 }

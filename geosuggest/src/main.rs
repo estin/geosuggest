@@ -22,14 +22,19 @@ pub struct SuggestQuery {
     limit: Option<usize>,
     /// isolanguage code
     lang: Option<String>,
+    /// min score of Jaro Winkler similarity (by default 0.8)
+    min_score: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReverseQuery {
     lat: f64,
     lng: f64,
+    limit: Option<usize>,
     /// isolanguage code
     lang: Option<String>,
+    /// distance correction coefficient by city population `score(item) = item.distance - k * item.city.population`
+    k: Option<f64>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -41,9 +46,16 @@ pub struct SuggestResult<'a> {
 
 #[derive(Serialize, JsonSchema)]
 pub struct ReverseResult<'a> {
-    item: Option<CityResultItem<'a>>,
+    items: Vec<ReverseResultItem<'a>>,
     /// elapsed time in ms
     time: usize,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct ReverseResultItem<'a> {
+    city: CityResultItem<'a>,
+    distance: f64,
+    score: f64,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -54,6 +66,7 @@ pub struct CityResultItem<'a> {
     timezone: &'a str,
     latitude: f64,
     longitude: f64,
+    population: usize,
 }
 
 impl<'a> CityResultItem<'a> {
@@ -69,6 +82,7 @@ impl<'a> CityResultItem<'a> {
             timezone: &item.timezone,
             latitude: item.latitude,
             longitude: item.longitude,
+            population: item.population,
         }
     }
 }
@@ -84,6 +98,7 @@ pub async fn suggest(
         .suggest(
             suggest_query.pattern.as_str(),
             suggest_query.limit.unwrap_or(10),
+            suggest_query.min_score,
         )
         .iter()
         .map(|item| CityResultItem::from_city(item, suggest_query.lang.as_deref()))
@@ -101,11 +116,24 @@ pub async fn reverse(
 ) -> HttpResponse {
     let now = Instant::now();
 
-    let city = engine.reverse((reverse_query.lat, reverse_query.lng));
+    let items = engine
+        .reverse(
+            (reverse_query.lat, reverse_query.lng),
+            reverse_query.limit.unwrap_or(10),
+            reverse_query.k,
+        )
+        .unwrap_or_else(std::vec::Vec::new);
 
     HttpResponse::Ok().json(&ReverseResult {
         time: now.elapsed().as_millis() as usize,
-        item: city.map(|city| CityResultItem::from_city(city, reverse_query.lang.as_deref())),
+        items: items
+            .iter()
+            .map(|item| ReverseResultItem {
+                city: CityResultItem::from_city(item.city, reverse_query.lang.as_deref()),
+                distance: item.distance,
+                score: item.score,
+            })
+            .collect(),
     })
 }
 
