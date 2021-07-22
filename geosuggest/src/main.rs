@@ -16,6 +16,8 @@ use oaph::{
 
 mod settings;
 
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SuggestQuery {
     pattern: String,
@@ -150,15 +152,19 @@ fn generate_openapi_files() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
 
+    let title = format!("geosuggest v{}", VERSION);
+
     // render swagger ui html to temporary file
     OpenApiPlaceHolder::swagger_ui_html_to_file(
         "/openapi3.yaml",
+        &title,
         std::env::temp_dir().join("swagger-ui.html"),
     )?;
 
     // render redoc ui html to temporary file
     OpenApiPlaceHolder::redoc_ui_html_to_file(
         "/openapi3.yaml",
+        &title,
         std::env::temp_dir().join("redoc-ui.html"),
     )?;
 
