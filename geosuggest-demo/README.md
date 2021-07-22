@@ -1,12 +1,12 @@
 ## geosuggest demo
 
-This is a demonstrating how to [geosuggest](https://github.com/estin/geosuggest) and deploy to [Heroku](https://heroku.com).
+This is a demonstrating how to use [geosuggest](https://github.com/estin/geosuggest).
 
 [Live demo](https://geosuggest.herokuapp.com/) on [Heroku](https://heroku.com) free quota:
 - Please be patient, it will take some time for the app to wake up
 
 In Dockerfile:
- - download and compile [geosuggest](https://github.com/estin/cywad) backend
+ - download and compile [geosuggest](https://github.com/estin/geosuggest) backend
  - build index on [geonames free data](http://download.geonames.org/export/dump/)
  - build [yew](https://github.com/yewstack/yew) based frontend
 
