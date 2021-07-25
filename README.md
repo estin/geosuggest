@@ -12,7 +12,12 @@ Main features:
  - suggest city by name
  - find nearest city by coordinates
  - multilang (based on configured index options)
+ - simple REST http api
  - no extral api used
+
+Based on:
+ - [strsim](https://crates.io/crates/strsim)
+ - [kdtree](https://crates.io/crates/kdtree)
 
 ## Setup&Run
 
