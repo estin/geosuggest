@@ -4,7 +4,7 @@
   <p></p>
 </div>
 
-[Live demo](https://geosuggest.herokuapp.com/) with [sources](https://github.com/estin/geosuggest/tree/master/geosuggest-demo)
+[Live demo](https://geosuggest.herokuapp.com/) with [sources](https://github.com/estin/geosuggest/tree/master/geosuggest-demo) on [Heroku](https://heroku.com) free quota (please be patient, it will take some time for the app to wake up)
 
 Main features:
  - library or service modes
@@ -15,9 +15,10 @@ Main features:
  - simple REST http api
  - no extral api used
 
-Based on:
+### Based on:
  - [strsim](https://crates.io/crates/strsim)
  - [kdtree](https://crates.io/crates/kdtree)
+ - [ntex](https://crates.io/crates/ntex)
 
 ## Setup&Run
 
@@ -39,20 +40,41 @@ $ curl -sL http://download.geonames.org/export/dump/cities15000.zip --output /tm
     && unzip -d /tmp /tmp/alternateNamesV2.zip
 
 # build index
-$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- -c /tmp/cities15000.txt -n /tmp/alternateNamesV2.txt -l ru,uk,be,zh,ja -o /tmp/geosuggest-index.json
+$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- \
+    -c /tmp/cities15000.txt \
+    -n /tmp/alternateNamesV2.txt \
+    -l ru,uk,be,zh,ja \
+    -o /tmp/geosuggest-index.json
 ```
 
 Run
 
 ```bash
-$ RUST_LOG=geosuggest=trace GEOSUGGEST_INDEX_FILE=/tmp/geosuggest-index.json GEOSUGGEST_HOST=127.0.0.1 GEOSUGGEST_PORT=8080 cargo run -p geosuggest --bin geosuggest --release
+$ RUST_LOG=geosuggest=trace \
+    GEOSUGGEST_INDEX_FILE=/tmp/geosuggest-index.json \
+    GEOSUGGEST_HOST=127.0.0.1 \
+    GEOSUGGEST_PORT=8080 \
+    cargo run -p geosuggest --bin geosuggest --release
 ```
 
 Check
 
 ```bash
-$ curl "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1"
-{"items":[{"id":472045,"name":"Voronezh","country_code":"RU","timezone":"Europe/Moscow","latitude":51.67204,"longitude":39.1843,"population":848752}],"time":15
+$ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
+{
+  "items": [
+    {
+      "id": 472045,
+      "name": "Voronezh",
+      "country_code": "RU",
+      "timezone": "Europe/Moscow",
+      "latitude": 51.67204,
+      "longitude": 39.1843,
+      "population": 848752
+    }
+  ],
+  "time": 25
+}
 ```
 
 See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosuggest-demo/Dockerfile)
