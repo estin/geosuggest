@@ -3,6 +3,7 @@ FROM rust:slim
 ARG GEOSUGGEST_BASE_API_URL=$GEOSUGGEST_BASE_API_URL
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
 ARG GEOSUGGEST_INDEX=geosuggest-index.json
+ARG CITIES=cities5000
 
 RUN apt update \
     && apt -y install curl build-essential unzip pkg-config libssl-dev
@@ -17,16 +18,17 @@ RUN cd /root \
 
 # index
 RUN cd /tmp \ 
-    && curl -sL http://download.geonames.org/export/dump/cities15000.zip --output cities1500.zip \
+    && curl -sL http://download.geonames.org/export/dump/$CITIES.zip --output $CITIES.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output alternateNamesV2.zip \
-    && unzip cities1500.zip \
+    && unzip $CITIES.zip \
     && unzip alternateNamesV2.zip
 
 RUN ls /tmp
-RUN /root/geosuggest-release/target/release/geosuggest-build-index -c /tmp/cities15000.txt -n /tmp/alternateNamesV2.txt -l ru,uk,be,zh,ja -o /opt/$GEOSUGGEST_INDEX
+RUN /root/geosuggest-release/target/release/geosuggest-build-index -c /tmp/$CITIES.txt -n /tmp/alternateNamesV2.txt -l ru,uk,be,zh,ja -o /opt/$GEOSUGGEST_INDEX
 
 # demo ui
-RUN cargo install trunk wasm-bindgen-cli
+RUN cargo install wasm-bindgen-cli
+RUN cargo install trunk --version 0.11.0
 RUN rustup target add wasm32-unknown-unknown
 RUN cd /root/geosuggest-release/geosuggest-demo \
     && trunk build --release -d /root/geosuggest-demo-release
