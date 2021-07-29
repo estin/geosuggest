@@ -413,16 +413,16 @@ impl Engine {
             // INCLUDE:
             // PPL	populated place	a city, town, village, or other agglomeration of buildings where people live and work
             // PPLA	seat of a first-order administrative division	seat of a first-order administrative division (PPLC takes precedence over PPLA)
+            // PPLA2	seat of a second-order administrative division
+            // PPLA3	seat of a third-order administrative division
+            // PPLA4	seat of a fourth-order administrative division
+            // PPLA5	seat of a fifth-order administrative division
             // PPLC	capital of a political entity
             // PPLS	populated places	cities, towns, villages, or other agglomerations of buildings where people live and work
             // PPLG	seat of government of a political entity
             // PPLCH	historical capital of a political entity	a former capital of a political entity
             //
             // EXCLUDE:
-            // PPLA2	seat of a second-order administrative division
-            // PPLA3	seat of a third-order administrative division
-            // PPLA4	seat of a fourth-order administrative division
-            // PPLA5	seat of a fifth-order administrative division
             // PPLF farm village	a populated place where the population is largely engaged in agricultural activities
             // PPLL	populated locality	an area similar to a locality but with a small group of dwellings or other buildings
             // PPLQ	abandoned populated place
@@ -431,8 +431,8 @@ impl Engine {
             // STLMT israeli settlement
             //
             match record.feature_code.as_str() {
-                "PPLA2" | "PPLA3" | "PPLA4" | "PPLA5" | "PPLF" | "PPLL" | "PPLQ" | "PPLW"
-                | "PPLX" | "STLMT" => continue,
+                "PPLA3" | "PPLA4" | "PPLA5" | "PPLF" | "PPLL" | "PPLQ" | "PPLW" | "PPLX"
+                | "STLMT" => continue,
                 _ => {}
             };
 
