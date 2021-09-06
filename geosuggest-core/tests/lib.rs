@@ -1,6 +1,9 @@
 use geosuggest_core::Engine;
 use std::{env::temp_dir, error::Error};
 
+#[cfg(feature = "geoip2_support")]
+use std::{net::IpAddr, str::FromStr};
+
 fn init() {
     let _ = env_logger::builder().is_test(true).try_init();
 }
@@ -12,7 +15,7 @@ fn get_engine(
     Engine::new_from_files(
         cities.unwrap_or("tests/misc/cities-ru.txt"),
         Some(names.unwrap_or("tests/misc/names.txt")),
-        vec!["ru"],
+        vec![],
     )
 }
 
@@ -35,6 +38,20 @@ fn reverse() -> Result<(), Box<dyn Error>> {
     let items = result.unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].city.name, "Voronezh");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "geoip2_support")]
+fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
+    init();
+    let mut engine = get_engine(None, None)?;
+    engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
+    let result = engine.geoip2_lookup(IpAddr::from_str("81.2.69.142")?);
+    assert!(result.is_some());
+    let item = result.unwrap();
+    assert_eq!(item.name, "London");
 
     Ok(())
 }

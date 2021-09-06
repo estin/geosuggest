@@ -1,6 +1,6 @@
 [package]
 name = "geosuggest"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 
 default-run = "geosuggest"
@@ -8,6 +8,9 @@ default-run = "geosuggest"
 [[bin]]
 name = "geosuggest"
 path = "src/main.rs"
+
+[features]
+geoip2_support = ["geosuggest-core/geoip2_support"]
 
 [dependencies]
 log = "0.4"

@@ -29,5 +29,18 @@ paths:
             application/json:
               schema:
                 {{ReverseResult}}
+  /api/city/geoip2:
+    get:
+      tags:
+      - geoip2
+      description: find city by IP address 
+      parameters:
+        {{GeoIP2Query}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                {{GeoIP2Result}}
 definitions:
   {{oaph::definitions}}

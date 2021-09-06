@@ -12,6 +12,8 @@ pub struct Settings {
     pub port: usize,
     pub index_file: String,
     pub static_dir: Option<String>,
+    #[cfg(feature = "geoip2_support")]
+    pub geoip2_file: Option<String>,
 }
 
 impl Settings {
@@ -50,6 +52,8 @@ impl Default for Settings {
             port: 8080,
             index_file: "".to_string(),
             static_dir: None,
+            #[cfg(feature = "geoip2_support")]
+            geoip2_file: None,
         }
     }
 }

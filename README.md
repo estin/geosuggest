@@ -11,6 +11,7 @@ Main features:
  - build index by free gazetteer data from [geonames.org](https://www.geonames.org/)
  - suggest city by name
  - find nearest city by coordinates
+ - MaxMind GeoIP2(Lite) city database support
  - multilang (based on configured index options)
  - simple REST http api
  - no extral api used
@@ -18,6 +19,7 @@ Main features:
 ### Based on:
  - [strsim](https://crates.io/crates/strsim)
  - [kdtree](https://crates.io/crates/kdtree)
+ - [geoip2](https://crates.io/crates/geoip2)
  - [ntex](https://crates.io/crates/ntex)
 
 ## Setup&Run

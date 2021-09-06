@@ -1,5 +1,11 @@
+use std::boxed::Box;
 use std::sync::Arc;
 use std::time::Instant;
+
+#[cfg(feature = "geoip2_support")]
+use std::net::IpAddr;
+#[cfg(feature = "geoip2_support")]
+use std::str::FromStr;
 
 use ntex::web::{self, middleware, App, HttpRequest, HttpResponse};
 use ntex_cors::Cors;
@@ -39,6 +45,15 @@ pub struct ReverseQuery {
     k: Option<f64>,
 }
 
+#[cfg(feature = "geoip2_support")]
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GeoIP2Query {
+    /// IP to check, if not declared then `Forwarded` header will used or peer ip as last chance
+    ip: Option<String>,
+    /// isolanguage code
+    lang: Option<String>,
+}
+
 #[derive(Serialize, JsonSchema)]
 pub struct SuggestResult<'a> {
     items: Vec<CityResultItem<'a>>,
@@ -71,6 +86,15 @@ pub struct CityResultItem<'a> {
     population: usize,
 }
 
+#[cfg(feature = "geoip2_support")]
+#[derive(Serialize, JsonSchema)]
+pub struct GeoIP2Result<'a> {
+    city: Option<CityResultItem<'a>>,
+    for_ip: String,
+    /// elapsed time in ms
+    time: usize,
+}
+
 impl<'a> CityResultItem<'a> {
     pub fn from_city(item: &'a CitiesRecord, lang: Option<&'a str>) -> Self {
         let name = match (lang, item.names.as_ref()) {
@@ -91,19 +115,19 @@ impl<'a> CityResultItem<'a> {
 
 pub async fn suggest(
     engine: web::types::Data<Arc<Engine>>,
-    web::types::Query(suggest_query): web::types::Query<SuggestQuery>,
+    web::types::Query(query): web::types::Query<SuggestQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
     let now = Instant::now();
 
     let result = engine
         .suggest(
-            suggest_query.pattern.as_str(),
-            suggest_query.limit.unwrap_or(10),
-            suggest_query.min_score,
+            query.pattern.as_str(),
+            query.limit.unwrap_or(10),
+            query.min_score,
         )
         .iter()
-        .map(|item| CityResultItem::from_city(item, suggest_query.lang.as_deref()))
+        .map(|item| CityResultItem::from_city(item, query.lang.as_deref()))
         .collect::<Vec<CityResultItem>>();
     HttpResponse::Ok().json(&SuggestResult {
         time: now.elapsed().as_millis() as usize,
@@ -113,17 +137,13 @@ pub async fn suggest(
 
 pub async fn reverse(
     engine: web::types::Data<Arc<Engine>>,
-    web::types::Query(reverse_query): web::types::Query<ReverseQuery>,
+    web::types::Query(query): web::types::Query<ReverseQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
     let now = Instant::now();
 
     let items = engine
-        .reverse(
-            (reverse_query.lat, reverse_query.lng),
-            reverse_query.limit.unwrap_or(10),
-            reverse_query.k,
-        )
+        .reverse((query.lat, query.lng), query.limit.unwrap_or(10), query.k)
         .unwrap_or_else(std::vec::Vec::new);
 
     HttpResponse::Ok().json(&ReverseResult {
@@ -131,7 +151,7 @@ pub async fn reverse(
         items: items
             .iter()
             .map(|item| ReverseResultItem {
-                city: CityResultItem::from_city(item.city, reverse_query.lang.as_deref()),
+                city: CityResultItem::from_city(item.city, query.lang.as_deref()),
                 distance: item.distance,
                 score: item.score,
             })
@@ -139,16 +159,71 @@ pub async fn reverse(
     })
 }
 
+#[cfg(feature = "geoip2_support")]
+pub async fn geoip2(
+    engine: web::types::Data<Arc<Engine>>,
+    web::types::Query(query): web::types::Query<GeoIP2Query>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let now = Instant::now();
+
+    let ip = match query.ip.as_ref() {
+        Some(ip) => Some(ip.as_str()),
+        None => {
+            // fallback to headers
+            if let Some(forwarded) = req.headers().get(ntex::http::header::FORWARDED) {
+                forwarded.to_str().ok()
+            } else {
+                None
+            }
+        }
+    };
+
+    let addr = match ip {
+        Some(ip) => match IpAddr::from_str(ip) {
+            Ok(addr) => addr,
+            Err(e) => {
+                return HttpResponse::BadRequest()
+                    .body(format!("Invalid ip addr: {} error: {}", ip, e))
+            }
+        },
+        None => {
+            if let Some(peer_addr) = req.peer_addr() {
+                peer_addr.ip()
+            } else {
+                return HttpResponse::BadRequest().body(format!(
+                    "IP address does't declared in request and fieled to get peer addr"
+                ));
+            }
+        }
+    };
+
+    let result = engine.geoip2_lookup(addr);
+
+    HttpResponse::Ok().json(&GeoIP2Result {
+        time: now.elapsed().as_millis() as usize,
+        for_ip: addr.to_string(),
+        city: result.map(|item| CityResultItem::from_city(item, query.lang.as_deref())),
+    })
+}
+
 fn generate_openapi_files() -> Result<(), Box<dyn std::error::Error>> {
     let openapi3_yaml_path = std::env::temp_dir().join("openapi3.yaml");
 
     // render openapi3 yaml to temporary file
-    OpenApiPlaceHolder::new()
+    let aoph = OpenApiPlaceHolder::new()
         .query_params::<SuggestQuery>("SuggestQuery")?
         .query_params::<ReverseQuery>("ReverseQuery")?
         .schema::<SuggestResult>("SuggestResult")?
-        .schema::<ReverseResult>("ReverseResult")?
-        .render_to_file(include_str!("openapi3.yaml"), &openapi3_yaml_path)?;
+        .schema::<ReverseResult>("ReverseResult")?;
+
+    #[cfg(feature = "geoip2_support")]
+    let aoph = {
+        aoph.query_params::<GeoIP2Query>("GeoIP2Query")?
+            .schema::<GeoIP2Result>("GeoIP2Result")?
+    };
+
+    aoph.render_to_file(include_str!("openapi3.yaml"), &openapi3_yaml_path)?;
 
     log::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
 
@@ -185,13 +260,19 @@ async fn main() -> std::io::Result<()> {
         panic!("Please set `index_file`");
     }
 
-    let shared_engine = Arc::new(
-        Engine::load_from_json(&settings.index_file).unwrap_or_else(|e| {
-            panic!("On build engine from file: {} - {}", settings.index_file, e)
-        }),
-    );
+    let mut engine = Engine::load_from_json(&settings.index_file)
+        .unwrap_or_else(|e| panic!("On build engine from file: {} - {}", settings.index_file, e));
 
+    #[cfg(feature = "geoip2_support")]
+    if let Some(geoip2_file) = settings.geoip2_file.as_ref() {
+        engine
+            .load_geoip2(geoip2_file)
+            .expect(&format!("On read geoip2 file from {}", geoip2_file));
+    }
+
+    let shared_engine = Arc::new(engine);
     let shared_engine_clone = shared_engine.clone();
+
     let settings_clone = settings.clone();
 
     let listen_on = format!("{}:{}", settings.host, settings.port);
@@ -202,14 +283,16 @@ async fn main() -> std::io::Result<()> {
         let settings = settings_clone.clone();
 
         App::new()
-            // enable logger
             .data(shared_engine)
+            // enable logger
             .wrap(middleware::Logger::default())
             .wrap(Cors::default())
             .service((
                 // api
                 web::resource("/api/city/suggest").to(suggest),
                 web::resource("/api/city/reverse").to(reverse),
+                #[cfg(feature = "geoip2_support")]
+                web::resource("/api/city/geoip2").to(geoip2),
                 // serve openapi3 yaml and ui from files
                 fs::Files::new("/openapi3.yaml", std::env::temp_dir()).index_file("openapi3.yaml"),
                 fs::Files::new("/swagger", std::env::temp_dir()).index_file("swagger-ui.html"),

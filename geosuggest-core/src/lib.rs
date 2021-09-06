@@ -5,8 +5,13 @@ use std::time::Instant;
 use kdtree::{distance::squared_euclidean, KdTree};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
 use strsim::jaro_winkler;
+
+#[cfg(feature = "geoip2_support")]
+use std::net::IpAddr;
+
+#[cfg(feature = "geoip2_support")]
+use geoip2::{City, Reader};
 
 #[cfg(feature = "oaph_support")]
 use oaph::schemars::{self, JsonSchema};
@@ -122,6 +127,10 @@ pub struct Engine {
 
     #[serde(skip_serializing)]
     tree: KdTree<f64, KdTreeEntry, [f64; 2]>,
+
+    #[cfg(feature = "geoip2_support")]
+    #[serde(skip_serializing)]
+    geoip2_reader: Option<&'static Reader<'static, City<'static>>>,
 }
 
 impl Engine {
@@ -483,6 +492,8 @@ impl Engine {
             geonames,
             tree,
             entries,
+            #[cfg(feature = "geoip2_support")]
+            geoip2_reader: None,
         };
 
         log::info!(
@@ -542,6 +553,8 @@ impl Engine {
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
             tree,
+            #[cfg(feature = "geoip2_support")]
+            geoip2_reader: None,
         };
 
         log::info!(
@@ -551,38 +564,67 @@ impl Engine {
 
         Ok(engine)
     }
+
+    // TODO drop previous leaks on following method calls
+    // TODO slim mmdb size, we are needs only geonameid
+    #[cfg(feature = "geoip2_support")]
+    pub fn load_geoip2<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // leak geoip buffer and reader with reference to buffer
+        let buffer = std::fs::read(path)?;
+        let buffer: &'static Vec<u8> = Box::leak(Box::new(buffer));
+        let reader = Reader::<City>::from_bytes(buffer).map_err(|e| GeoIP2Error(e))?;
+        let reader: &'static Reader<City> = Box::leak(Box::new(reader));
+
+        self.geoip2_reader = Some(reader);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "geoip2_support")]
+    pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&CitiesRecord> {
+        match self.geoip2_reader.as_ref() {
+            Some(reader) => {
+                let result = reader.lookup(addr).ok()?;
+                let city = result.city?;
+                let id = city.geoname_id? as usize;
+                self.geonames.get(&id)
+            }
+            None => {
+                log::warn!("Geoip2 reader is't configured!");
+                None
+            }
+        }
+    }
 }
 
-fn split_content_to_n_parts(content: &str, n: usize) -> Vec<&str> {
+fn split_content_to_n_parts(content: &str, n: usize) -> Vec<String> {
     if n == 0 || n == 1 {
-        return vec![content];
+        return vec![content.to_owned()];
     }
 
-    let mut parts = Vec::new();
-    let chunk_size = content.len() / n;
+    let lines: Vec<&str> = content.lines().collect();
+    lines.chunks(n).map(|chunk| chunk.join("\n")).collect()
+}
 
-    let mut position: usize = 0;
-    for _i in 0..n {
-        if position >= content.len() {
-            break;
-        }
-        let start_position = position;
-        let chunk = {
-            let mut offset = 0;
-            loop {
-                if let Some(c) = content.get(start_position..(start_position + chunk_size - offset))
-                {
-                    break c;
-                }
-                offset += 1;
-            }
-        };
-        position = match chunk.rfind('\n') {
-            Some(p) => start_position + p,
-            None => content.len(),
-        };
-        parts.push(&content[start_position..position]);
+#[cfg(feature = "geoip2_support")]
+struct GeoIP2Error(geoip2::Error);
+
+#[cfg(feature = "geoip2_support")]
+impl std::error::Error for GeoIP2Error {}
+
+#[cfg(feature = "geoip2_support")]
+impl std::fmt::Debug for GeoIP2Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
     }
+}
 
-    parts
+#[cfg(feature = "geoip2_support")]
+impl std::fmt::Display for GeoIP2Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GeoIP2 Error {:?}", self.0)
+    }
 }

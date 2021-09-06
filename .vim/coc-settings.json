@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.updates.channel": "nightly",
+    "rust-analyzer.cargo.features": [
+        "geoip2_support"
+    ]
+}
