@@ -81,6 +81,12 @@ $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
 
 See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosuggest-demo/Dockerfile)
 
+Test
+
+```bash
+$ cargo test --all-features -- --test-threads=1
+```
+
 ## License
 
 This project is licensed under

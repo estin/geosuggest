@@ -2,6 +2,8 @@ use geosuggest_core::Engine;
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
+use procinfo;
+#[cfg(feature = "geoip2_support")]
 use std::{net::IpAddr, str::FromStr};
 
 fn init() {
@@ -52,6 +54,39 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
     assert!(result.is_some());
     let item = result.unwrap();
     assert_eq!(item.name, "London");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "geoip2_support")]
+fn geoip2_release_previous_buffer_and_reader() -> Result<(), Box<dyn Error>> {
+    init();
+    let mut engine = get_engine(None, None)?;
+
+    engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
+
+    // Get the resident non-swapped memory of this process that actually takes
+    // up space in RAM.
+    let memory_before = procinfo::pid::statm_self().unwrap().resident;
+
+    for _ in 0..50 {
+        engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
+    }
+
+    // let engines: Vec<Engine> = (0..50).map(|_| get_engine(None, None).unwrap()).collect();
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let memory_after = procinfo::pid::statm_self().unwrap().resident;
+
+    log::trace!(
+        "Memory before: {} after: {} diff: {}",
+        memory_before,
+        memory_after,
+        memory_after - memory_before
+    );
+
+    assert_eq!(memory_after - memory_before, 0);
 
     Ok(())
 }

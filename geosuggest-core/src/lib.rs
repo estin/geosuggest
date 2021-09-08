@@ -130,7 +130,7 @@ pub struct Engine {
 
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
-    geoip2_reader: Option<&'static Reader<'static, City<'static>>>,
+    geoip2_reader: Option<(&'static Vec<u8>, &'static Reader<'static, City<'static>>)>,
 }
 
 impl Engine {
@@ -565,20 +565,29 @@ impl Engine {
         Ok(engine)
     }
 
-    // TODO drop previous leaks on following method calls
     // TODO slim mmdb size, we are needs only geonameid
+    /// **unsafe** method to initialize geoip2 buffer and reader
     #[cfg(feature = "geoip2_support")]
     pub fn load_geoip2<P: AsRef<std::path::Path>>(
         &mut self,
         path: P,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // consume and release memory of previously leaked buffer and reader
+        if let Some((b, r)) = self.geoip2_reader.take() {
+            // make Box<T> from raw pointer to drop it
+            let b = b as *const Vec<u8>;
+            let _ = unsafe { Box::from_raw(b as *mut Vec<u8>) };
+            let r = r as *const Reader<'static, City<'static>>;
+            let _ = unsafe { Box::from_raw(r as *mut Reader<'static, City<'static>>) };
+        }
+
         // leak geoip buffer and reader with reference to buffer
         let buffer = std::fs::read(path)?;
         let buffer: &'static Vec<u8> = Box::leak(Box::new(buffer));
         let reader = Reader::<City>::from_bytes(buffer).map_err(|e| GeoIP2Error(e))?;
         let reader: &'static Reader<City> = Box::leak(Box::new(reader));
 
-        self.geoip2_reader = Some(reader);
+        self.geoip2_reader = Some((buffer, reader));
 
         Ok(())
     }
@@ -586,7 +595,7 @@ impl Engine {
     #[cfg(feature = "geoip2_support")]
     pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&CitiesRecord> {
         match self.geoip2_reader.as_ref() {
-            Some(reader) => {
+            Some((_, reader)) => {
                 let result = reader.lookup(addr).ok()?;
                 let city = result.city?;
                 let id = city.geoname_id? as usize;
