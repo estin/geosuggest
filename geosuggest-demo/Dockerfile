@@ -14,7 +14,7 @@ RUN cd /root \
     && unzip geosuggest-release.zip \
     && mv geosuggest-$GEOSUGGEST_RELEASE geosuggest-release \
     && cd geosuggest-release \
-    && cargo build --release
+    && cargo build --release --all-features
 
 # index
 RUN cd /tmp \ 
@@ -27,7 +27,7 @@ RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index -c /tmp/$CITIES.txt -n /tmp/alternateNamesV2.txt -l ru,uk,be,zh,ja -o /opt/$GEOSUGGEST_INDEX
 
 # demo ui
-RUN cargo install wasm-bindgen-cli
+RUN cargo install wasm-bindgen-cli --version 0.2.74
 RUN cargo install trunk --version 0.11.0
 RUN rustup target add wasm32-unknown-unknown
 RUN cd /root/geosuggest-release/geosuggest-demo \
