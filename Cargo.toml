@@ -7,6 +7,6 @@ members = [
 ]
 
 [patch.crates-io]
-ntex-files = { git = "https://github.com/ntex-rs/ntex-extras.git" }
-ntex-cors = { git = "https://github.com/ntex-rs/ntex-extras.git" }
+ntex-files = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "74148e3" }
+ntex-cors = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "74148e3" }
 oaph = { git = "https://github.com/estin/oaph.git" }
