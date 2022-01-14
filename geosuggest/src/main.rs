@@ -129,6 +129,7 @@ pub async fn suggest(
         .iter()
         .map(|item| CityResultItem::from_city(item, query.lang.as_deref()))
         .collect::<Vec<CityResultItem>>();
+
     HttpResponse::Ok().json(&SuggestResult {
         time: now.elapsed().as_millis() as usize,
         items: result,
@@ -207,11 +208,12 @@ pub async fn geoip2(
     })
 }
 
-fn generate_openapi_files() -> Result<(), Box<dyn std::error::Error>> {
+fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn std::error::Error>> {
     let openapi3_yaml_path = std::env::temp_dir().join("openapi3.yaml");
 
     // render openapi3 yaml to temporary file
     let aoph = OpenApiPlaceHolder::new()
+        .substitute("url_path_prefix", &settings.url_path_prefix)
         .query_params::<SuggestQuery>("SuggestQuery")?
         .query_params::<ReverseQuery>("ReverseQuery")?
         .schema::<SuggestResult>("SuggestResult")?
@@ -229,16 +231,21 @@ fn generate_openapi_files() -> Result<(), Box<dyn std::error::Error>> {
 
     let title = format!("geosuggest v{}", VERSION);
 
+    let openapi3_url_path = std::path::Path::new(&settings.url_path_prefix).join("openapi3.yaml");
+    let openapi3_url_path = openapi3_url_path
+        .to_str()
+        .ok_or_else(|| "Failed to build openapi3 url")?;
+
     // render swagger ui html to temporary file
     OpenApiPlaceHolder::swagger_ui_html_to_file(
-        "/openapi3.yaml",
+        openapi3_url_path,
         &title,
         std::env::temp_dir().join("swagger-ui.html"),
     )?;
 
     // render redoc ui html to temporary file
     OpenApiPlaceHolder::redoc_ui_html_to_file(
-        "/openapi3.yaml",
+        openapi3_url_path,
         &title,
         std::env::temp_dir().join("redoc-ui.html"),
     )?;
@@ -254,7 +261,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("Settings are:\n{:#?}", settings);
 
     // generate files for openapi3.yaml and swagger ui
-    generate_openapi_files().expect("On generate openapi3 files");
+    generate_openapi_files(&settings).expect("On generate openapi3 files");
 
     if settings.index_file.is_empty() {
         panic!("Please set `index_file`");
@@ -287,7 +294,7 @@ async fn main() -> std::io::Result<()> {
             // enable logger
             .wrap(middleware::Logger::default())
             .wrap(Cors::default())
-            .service((
+            .service(web::scope(settings.url_path_prefix).service((
                 // api
                 web::resource("/api/city/suggest").to(suggest),
                 web::resource("/api/city/reverse").to(reverse),
@@ -297,7 +304,7 @@ async fn main() -> std::io::Result<()> {
                 fs::Files::new("/openapi3.yaml", std::env::temp_dir()).index_file("openapi3.yaml"),
                 fs::Files::new("/swagger", std::env::temp_dir()).index_file("swagger-ui.html"),
                 fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
-            ))
+            )))
             .configure(move |cfg: &mut web::ServiceConfig| {
                 if let Some(static_dir) = settings.static_dir.as_ref() {
                     cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));

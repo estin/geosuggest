@@ -1,3 +1,4 @@
 host = "127.0.0.1"
 port = "8090"
+url_path_prefix = "/"
 index_file = "./geosuggest-index.json"

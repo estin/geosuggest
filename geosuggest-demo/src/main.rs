@@ -457,9 +457,9 @@ impl Component for Model {
                             { result_node }
                             <div class="flex w-full p-1 mb-1">
                                 <h4 class="font-semibold">{"API: "}</h4>
-                                <a class="mx-1 text-blue-500" href="/swagger">{"Swagger"}</a>
+                                <a class="mx-1 text-blue-500" href="./swagger">{"Swagger"}</a>
                                 { " / " }
-                                <a class="mx-1 text-blue-500" href="/redoc">{"ReDoc"}</a>
+                                <a class="mx-1 text-blue-500" href="./redoc">{"ReDoc"}</a>
                             </div>
                             <div class="flex w-full p-1 mb-1">
                                 <h4 class="font-semibold">{"Github: "}</h4>
