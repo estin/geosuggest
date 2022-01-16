@@ -32,8 +32,8 @@ RUN /root/geosuggest-release/target/release/geosuggest-build-index \
     -o /opt/$GEOSUGGEST_INDEX
 
 # demo ui
-RUN cargo install wasm-bindgen-cli --version 0.2.74
-RUN cargo install trunk --version 0.11.0
+RUN cargo install wasm-bindgen-cli
+RUN cargo install trunk
 RUN rustup target add wasm32-unknown-unknown
 RUN cd /root/geosuggest-release/geosuggest-demo \
     && trunk build --release -d /root/geosuggest-demo-release
@@ -56,7 +56,8 @@ ENV RUST_LOG=geosuggest=trace
 RUN echo "host = '0.0.0.0'" >> /opt/geosuggest-settings.toml \
     && echo "port = 8000 # see GEOSUGGEST_PORT" >> /opt/geosuggest-settings.toml \
     && echo "index_file = '/opt/$GEOSUGGEST_INDEX'" >> /opt/geosuggest-settings.toml \
-    && echo "static_dir = '/opt/geosuggest-static'" >> /opt/geosuggest-settings.toml
+    && echo "static_dir = '/opt/geosuggest-static'" >> /opt/geosuggest-settings.toml \
+    && echo "url_path_prefix = '/'" >> /opt/geosuggest-settings.toml
 
 # pass $PORT to $GEOSUGGEST_PORT
 ENTRYPOINT []
