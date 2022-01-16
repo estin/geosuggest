@@ -11,14 +11,31 @@ use yew::{html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRen
 mod bindings;
 
 #[derive(Serialize, Deserialize)]
+pub struct CountryItem {
+    id: usize,
+    code: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct CityResultItem {
     id: usize,
     name: String,
-    country_code: String,
+    country: Option<CountryItem>,
     timezone: String,
     latitude: f64,
     longitude: f64,
     population: f64,
+}
+
+impl CityResultItem {
+    pub fn get_country(&self) -> &str {
+        if let Some(ref country) = self.country {
+            &country.code
+        } else {
+            ""
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -346,7 +363,7 @@ impl Component for Model {
                         <aside role="menu" class="absolute z-10 flex flex-col items-start w-64 bg-white border rounded-md shadow-md mt-1">
                             <ul class="flex flex-col w-full">
                             { items.iter().enumerate().map(|(index, item)| html! {
-                                <li onclick=self.link.callback(move |_| Msg::SuggestItemSelected(index)) class="px-2 py-3 space-x-2 hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white focus:outline-none ">{ &item.name } {" "} { &item.country_code }</li>
+                                <li onclick=self.link.callback(move |_| Msg::SuggestItemSelected(index)) class="px-2 py-3 space-x-2 hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white focus:outline-none ">{ &item.name } {" "} { &item.get_country() }</li>
                             }).collect::<Html>()}
                             </ul>
                         </aside>

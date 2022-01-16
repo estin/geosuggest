@@ -76,10 +76,17 @@ pub struct ReverseResultItem<'a> {
 }
 
 #[derive(Serialize, JsonSchema)]
+pub struct CountryItem<'a> {
+    id: usize,
+    code: &'a str,
+    name: &'a str,
+}
+
+#[derive(Serialize, JsonSchema)]
 pub struct CityResultItem<'a> {
     id: usize,
     name: &'a str,
-    country_code: &'a str,
+    country: Option<CountryItem<'a>>,
     timezone: &'a str,
     latitude: f64,
     longitude: f64,
@@ -101,10 +108,25 @@ impl<'a> CityResultItem<'a> {
             (Some(lang), Some(names)) => names.get(lang).unwrap_or(&item.name),
             _ => &item.name,
         };
+
+        let country = if let Some(ref country) = item.country {
+            let country_name = match (lang, item.country_names.as_ref()) {
+                (Some(lang), Some(names)) => names.get(lang).unwrap_or(&country.name),
+                _ => &country.name,
+            };
+            Some(CountryItem {
+                id: country.id,
+                code: &country.code,
+                name: country_name,
+            })
+        } else {
+            None
+        };
+
         CityResultItem {
             id: item.id,
             name,
-            country_code: &item.country_code,
+            country,
             timezone: &item.timezone,
             latitude: item.latitude,
             longitude: item.longitude,
@@ -294,22 +316,30 @@ async fn main() -> std::io::Result<()> {
             // enable logger
             .wrap(middleware::Logger::default())
             .wrap(Cors::default())
-            .service(web::scope(settings.url_path_prefix).service((
-                // api
-                web::resource("/api/city/suggest").to(suggest),
-                web::resource("/api/city/reverse").to(reverse),
-                #[cfg(feature = "geoip2_support")]
-                web::resource("/api/city/geoip2").to(geoip2),
-                // serve openapi3 yaml and ui from files
-                fs::Files::new("/openapi3.yaml", std::env::temp_dir()).index_file("openapi3.yaml"),
-                fs::Files::new("/swagger", std::env::temp_dir()).index_file("swagger-ui.html"),
-                fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
-            )))
-            .configure(move |cfg: &mut web::ServiceConfig| {
-                if let Some(static_dir) = settings.static_dir.as_ref() {
-                    cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));
-                }
-            })
+            .service(
+                web::scope(&settings.url_path_prefix)
+                    .service((
+                        // api
+                        web::resource("/api/city/suggest").to(suggest),
+                        web::resource("/api/city/reverse").to(reverse),
+                        #[cfg(feature = "geoip2_support")]
+                        web::resource("/api/city/geoip2").to(geoip2),
+                        // serve openapi3 yaml and ui from files
+                        fs::Files::new("/openapi3.yaml", std::env::temp_dir())
+                            .index_file("openapi3.yaml"),
+                        fs::Files::new("/swagger", std::env::temp_dir())
+                            .index_file("swagger-ui.html"),
+                        fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
+                    ))
+                    .configure(move |cfg: &mut web::ServiceConfig| {
+                        if let Some(static_dir) = settings.static_dir.as_ref() {
+                            cfg.service(
+                                fs::Files::new(&settings.url_path_prefix, static_dir)
+                                    .index_file("index.html"),
+                            );
+                        }
+                    }),
+            )
     })
     .bind(listen_on)?
     .run()

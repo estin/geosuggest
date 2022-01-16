@@ -46,6 +46,7 @@ $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- \
     -c /tmp/cities15000.txt \
     -n /tmp/alternateNamesV2.txt \
     -l ru,uk,be,zh,ja \
+    --countries geosuggest-core/tests/misc/country-info.txt \
     -o /tmp/geosuggest-index.json
 ```
 
@@ -68,14 +69,18 @@ $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
     {
       "id": 472045,
       "name": "Voronezh",
-      "country_code": "RU",
+      "country": {
+        "id": 2017370,
+        "code": "RU",
+        "name": "Russia"
+      },
       "timezone": "Europe/Moscow",
       "latitude": 51.67204,
       "longitude": 39.1843,
       "population": 848752
     }
   ],
-  "time": 25
+  "time": 24
 }
 ```
 

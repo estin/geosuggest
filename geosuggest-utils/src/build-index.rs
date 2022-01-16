@@ -20,6 +20,12 @@ fn main() -> std::io::Result<()> {
     opts.optopt("c", "cities", "set geonames cities file name", "CITIES");
     opts.optopt("n", "names", "set geonames names file name", "NAMES");
     opts.optopt(
+        "",
+        "countries",
+        "set geonames country info file name",
+        "COUNTRIES",
+    );
+    opts.optopt(
         "l",
         "languages",
         "filter names languages comma separated",
@@ -55,6 +61,8 @@ fn main() -> std::io::Result<()> {
 
     let names_file = matches.opt_str("n");
 
+    let countries_file = matches.opt_str("countries");
+
     let languages_filter = matches
         .opt_str("l")
         .map(|v| {
@@ -73,6 +81,7 @@ fn main() -> std::io::Result<()> {
     let engine = Engine::new_from_files(
         &cities_file,
         names_file.as_ref(),
+        countries_file.as_ref(),
         languages_filter.iter().map(AsRef::as_ref).collect(),
     )
     .unwrap_or_else(|e| {

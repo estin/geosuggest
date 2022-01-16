@@ -9,6 +9,7 @@ fn app_config(cfg: &mut ServiceConfig) {
     let mut engine = Engine::new_from_files(
         "../geosuggest-core/tests/misc/cities-ru.txt",
         Some("../geosuggest-core/tests/misc/names.txt"),
+        Some("../geosuggest-core/tests/misc/country-info.txt"),
         vec!["ru"],
     )
     .unwrap();
@@ -65,6 +66,18 @@ async fn api_suggest_lang() -> Result<(), Error> {
     let items = result.get("items").unwrap().as_array().unwrap();
     assert!(!items.is_empty());
     assert_eq!(items[0].get("name").unwrap().as_str().unwrap(), "Воронеж");
+    assert_eq!(
+        items[0]
+            .get("country")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Россия"
+    );
 
     Ok(())
 }
@@ -128,6 +141,22 @@ async fn api_reverse_lang() -> Result<(), Error> {
             .as_str()
             .unwrap(),
         "Воронеж"
+    );
+    assert_eq!(
+        items[0]
+            .get("city")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("country")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Россия"
     );
 
     Ok(())

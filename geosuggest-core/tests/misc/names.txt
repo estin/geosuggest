@@ -215,3 +215,172 @@
 15886483	2643743	wkdt	Q84						
 16432734	2643743	zh-TW	倫敦						
 16432735	2643743	zh	倫敦						
+16126773	12017370		Şāḩib az Zamān						
+16126774	12017370	ar	صاحب الزمان						
+2017370	2522720	eu	Villaurbana						
+12017370	11291212	lt	Molykai						
+993186	2017370	en	Russian Soviet Federated Socialist Republic				1		
+993187	2017370		Rossiyskaya Sovetskaya Federativnaya Sotsialisticheskaya Respublika				1		
+993188	2017370	en	Russian Soviet Federative Socialist Republic				1		
+993191	2017370	en	Russian Socialist Federative Soviet Republic				1		
+1556474	2017370	aa	Russia	1					
+1556475	2017370	af	Rusland	1					
+1556476	2017370	am	ሩስያ	1					
+1556477	2017370	ar	روسيا	1					
+1556478	2017370	be	Расія	1					
+1556479	2017370	bg	Руска Федерация						
+1556480	2017370	bn	রাশিয়া						
+1556481	2017370	ca	Rússia	1					
+1556482	2017370	cs	Rusko	1					
+1556483	2017370	cy	Rwsia	1					
+1556484	2017370	da	Rusland	1					
+1556485	2017370	de	Russische Föderation						
+1556486	2017370	el	Ρωσία	1					
+1556487	2017370	en	Russia	1					
+1556488	2017370	eo	Rusujo	1					
+1556489	2017370	es	Rusia	1					
+1556490	2017370	et	Venemaa	1					
+1556491	2017370	eu	Errusia	1					
+1556492	2017370	fa	روسیه	1					
+1556493	2017370	fi	Venäjä	1					
+1556494	2017370	fo	Russland	1					
+1556495	2017370	fr	Russie	1					
+1556496	2017370	ga	an Rúis	1					
+1556497	2017370	he	רוסיה, הפדרציה של						
+1556498	2017370	hi	रूस	1					
+1556499	2017370	hr	Ruska Federacija						
+1556500	2017370	hu	Oroszország	1					
+1556501	2017370	hy	Ռուսաստան	1					
+1556502	2017370	id	Rusia	1					
+1556503	2017370	is	Rússland	1					
+1556504	2017370	it	Federazione Russa						
+1556505	2017370	ja	ロシア	1					
+1556506	2017370	ka	რუსეთი	1					
+1556507	2017370	km	រុស្ស៊ី	1					
+1556508	2017370	ko	러시아	1					
+1556509	2017370	lo	ຣັດເຊຍ	1					
+1556510	2017370	lt	Rusija	1					
+1556511	2017370	lv	Krievija	1					
+1556512	2017370	mk	Русија	1					
+1556513	2017370	ms	Rusia	1					
+1556514	2017370	mt	ir-Russja	1					
+1556515	2017370	nb	Den russiske føderasjon						
+1556516	2017370	nl	Russische Federatie						
+1556517	2017370	nn	Den russiske føderasjon						
+1556518	2017370	om	Russia	1					
+1556519	2017370	pl	Rosja	1					
+1556520	2017370	ps	روسیه	1					
+1556521	2017370	pt	Rússia	1					
+1556522	2017370	ro	Rusia	1					
+1556523	2017370	ru	Россия	1					
+1556524	2017370	sk	Ruská federácia						
+1556525	2017370	sl	Ruska federacija						
+1556526	2017370	so	Ruush	1					
+1556527	2017370	sq	Rusi	1					
+1556528	2017370	sr	Русија	1					
+1556529	2017370	sv	Ryssland	1					
+1556530	2017370	sw	Urusi	1					
+1556531	2017370	ta	ரஷ்யா	1					
+1556532	2017370	te	రష్యా	1					
+1556533	2017370	th	รัสเซีย	1					
+1556534	2017370	tr	Rusya Federasyonu						
+1556535	2017370	tt	Россия	1					
+1556536	2017370	uk	Росія	1					
+1556537	2017370	uz	Rossiya	1					
+1556538	2017370	vi	Nga	1					
+1556539	2017370	zh-TW	俄罗斯	1					
+2197904	2017370	ru	Российская Федерация						
+2419054	2017370	az	Rusiya	1					
+2419055	2017370	be	Расійская Федэрацыя	1					
+2419056	2017370	bg	Русия	1					
+2419057	2017370	bn	রাশিয়া	1					
+2419058	2017370	bo	ཨུ་རུ་སུ་	1					
+2419059	2017370	de	Russland	1					
+2419060	2017370	gl	Rusia	1					
+2419061	2017370	he	חבר המדינות הרוסיות	1					
+2419062	2017370	hr	Rusija	1					
+2419063	2017370	ii	ꊉꇆꌦ	1					
+2419064	2017370	it	Russia	1					
+2419065	2017370	ml	റഷ്യ	1					
+2419066	2017370	mn	Орос	1					
+2419067	2017370	nl	Rusland	1					
+2419068	2017370	ro	Federația Rusă	1					
+2419069	2017370	se	Ruošša	1					
+2419070	2017370	sk	Rusko	1					
+2419071	2017370	sl	Rusija	1					
+2419072	2017370	to	Lūsia	1					
+2419073	2017370	tr	Rusya	1					
+2419074	2017370	uk	Російська Федерація	1					
+2419075	2017370	ur	روس	1					
+2728832	2017370	en	Russian Federation						
+2728833	2017370	no	Russland	1					
+2728834	2017370	nb	Russland	1					
+2728835	2017370	nn	Russland	1					
+3075880	2017370	link	https://en.wikipedia.org/wiki/Russia						
+3763735	2017370		Rossiyskaya Federatsiya						
+5976391	2017370		Russian Soviet Federative Socialist Republic				1		
+5976392	2017370		Russian Soviet Federated Socialist Republic				1		
+5976393	2017370		Russian Socialist Federative Soviet Republic				1		
+7090367	2017370	ak	Rɔhyea	1					
+7090368	2017370	as	ৰাছিয়া	1					
+7090369	2017370	bm	Irisi	1					
+7090370	2017370	br	Rusia	1					
+7090371	2017370	bs	Rusija	1					
+7090372	2017370	ee	Russia nutome	1					
+7090373	2017370	ff	Riisii	1					
+7090374	2017370	gu	રશિયા	1					
+7090375	2017370	ha	Rasha	1					
+7090376	2017370	ki	Urusi	1					
+7090377	2017370	kk	Ресей	1					
+7090378	2017370	kl	Ruslandi	1					
+7090379	2017370	kn	ರಷ್ಯಾ	1					
+7090380	2017370	ckb	ڕووسیا						
+7090381	2017370	kw	Russi	1					
+7090382	2017370	lg	Lasa	1					
+7090383	2017370	ln	Risí	1					
+7090384	2017370	lu	Risi	1					
+7090385	2017370	mg	Rosia	1					
+7090386	2017370	mr	रशिया	1					
+7090387	2017370	my	ရုရှား	1					
+7090388	2017370	nd	Rashiya	1					
+7090389	2017370	ne	रूस	1					
+7090390	2017370	oc	Russia	1					
+7090391	2017370	or	ରୁଷିଆ	1					
+7090392	2017370	rm	Russia	1					
+7090393	2017370	rn	Uburusiya	1					
+7090394	2017370	sg	Rusïi	1					
+7090395	2017370	si	රුසියාව	1					
+7090396	2017370	sn	Russia	1					
+7090397	2017370	ti	ራሺያ	1					
+7090398	2017370	yo	Rọṣia	1					
+7090399	2017370	zu	i-Russia	1					
+8043265	2017370		Rossiya						
+10386978	2017370	fy	Ruslân	1					
+10795053	2017370	link	http://id.loc.gov/authorities/names/n80001203						
+11015585	2017370	olo	Ven'a		1				
+11015586	2017370	krl	Venäjä		1				
+16076669	2017370	ku	Rûsya	1					
+16490081	2017370	zh-CN	俄罗斯联邦						
+16925843	2017370	zh-Hant	俄羅斯	1					
+16930751	2017370	ce	Росси	1					
+16930752	2017370	dz	ཨུ་རུ་སུ	1					
+16930753	2017370	gd	An Ruis	1					
+16930754	2017370	ia	Russia	1					
+16930755	2017370	ig	Rụssịa	1					
+16930756	2017370	jv	Rusia	1					
+16930757	2017370	ks	روٗس	1					
+16930758	2017370	ky	Россия	1					
+16930759	2017370	lb	Russland	1					
+16930760	2017370	mi	Rūhia	1					
+16930761	2017370	os	Уӕрӕсе	1					
+16930762	2017370	pa	ਰੂਸ	1					
+16930763	2017370	qu	Rusia	1					
+16930764	2017370	sa	रष्यदेश:	1					
+16930765	2017370	sd	روس	1					
+16930766	2017370	su	Rusia	1					
+16930767	2017370	tg	Русия	1					
+16930768	2017370	tk	Russiýa	1					
+16930769	2017370	ug	رۇسىيە	1					
+16930770	2017370	wo	Risi	1					
+16930771	2017370	yi	רוסלאַנד	1					
+16930772	2017370	zh	俄罗斯	1					

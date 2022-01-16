@@ -13,10 +13,12 @@ fn init() {
 fn get_engine(
     cities: Option<&str>,
     names: Option<&str>,
+    countries: Option<&str>,
 ) -> Result<geosuggest_core::Engine, Box<dyn Error>> {
     Engine::new_from_files(
         cities.unwrap_or("tests/misc/cities-ru.txt"),
         Some(names.unwrap_or("tests/misc/names.txt")),
+        Some(countries.unwrap_or("tests/misc/country-info.txt")),
         vec![],
     )
 }
@@ -24,7 +26,7 @@ fn get_engine(
 #[test]
 fn suggest() -> Result<(), Box<dyn Error>> {
     init();
-    let engine = get_engine(None, None)?;
+    let engine = get_engine(None, None, None)?;
     let result = engine.suggest("voronezh", 1, None);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].name, "Voronezh");
@@ -34,7 +36,7 @@ fn suggest() -> Result<(), Box<dyn Error>> {
 #[test]
 fn reverse() -> Result<(), Box<dyn Error>> {
     init();
-    let engine = get_engine(None, None)?;
+    let engine = get_engine(None, None, None)?;
     let result = engine.reverse((51.6372, 39.1937), 1, None);
     assert!(result.is_some());
     let items = result.unwrap();
@@ -48,7 +50,7 @@ fn reverse() -> Result<(), Box<dyn Error>> {
 #[cfg(feature = "geoip2_support")]
 fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
     init();
-    let mut engine = get_engine(None, None)?;
+    let mut engine = get_engine(None, None, None)?;
     engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
     let result = engine.geoip2_lookup(IpAddr::from_str("81.2.69.142")?);
     assert!(result.is_some());
@@ -62,7 +64,7 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
 #[cfg(feature = "geoip2_support")]
 fn geoip2_release_previous_buffer_and_reader() -> Result<(), Box<dyn Error>> {
     init();
-    let mut engine = get_engine(None, None)?;
+    let mut engine = get_engine(None, None, None)?;
 
     engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
 
@@ -96,7 +98,7 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
     init();
 
     // build
-    let engine = get_engine(None, None)?;
+    let engine = get_engine(None, None, None)?;
 
     // dump
     engine.dump_to_json(temp_dir().join("test-engine.json"))?;
@@ -122,7 +124,7 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
 fn population_weight() -> Result<(), Box<dyn Error>> {
     init();
 
-    let engine = get_engine(Some("tests/misc/population-weight.txt"), None)?;
+    let engine = get_engine(Some("tests/misc/population-weight.txt"), None, None)?;
 
     let population_weight = 0.000000005;
 

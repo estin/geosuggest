@@ -24,7 +24,12 @@ RUN cd /tmp \
     && unzip alternateNamesV2.zip
 
 RUN ls /tmp
-RUN /root/geosuggest-release/target/release/geosuggest-build-index -c /tmp/$CITIES.txt -n /tmp/alternateNamesV2.txt -l ru,uk,be,zh,ja -o /opt/$GEOSUGGEST_INDEX
+RUN /root/geosuggest-release/target/release/geosuggest-build-index \
+    -c /tmp/$CITIES.txt \
+    -n /tmp/alternateNamesV2.txt \
+    -l ru,uk,be,zh,ja \
+    --countries=/root/geosuggest-release/geosuggest-core/tests/misc/country-info.txt \
+    -o /opt/$GEOSUGGEST_INDEX
 
 # demo ui
 RUN cargo install wasm-bindgen-cli --version 0.2.74

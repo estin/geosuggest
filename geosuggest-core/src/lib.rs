@@ -46,19 +46,39 @@ struct CitiesRecordRaw {
     alternatenames: String,
     latitude: f64,
     longitude: f64,
-    feature_class: String,
+    _feature_class: String,
     feature_code: String,
     country_code: String,
-    cc2: String,
-    admin1_code: String,
-    admin2_code: String,
-    admin3_code: String,
-    admin4_code: String,
+    _cc2: String,
+    _admin1_code: String,
+    _admin2_code: String,
+    _admin3_code: String,
+    _admin4_code: String,
     population: usize,
-    elevation: String,
-    dem: String,
+    _elevation: String,
+    _dem: String,
     timezone: String,
-    modification_date: String,
+    _modification_date: String,
+}
+
+// CounntryInfo
+// http://download.geonames.org/export/dump/countryInfo.txt
+// iso alpha2      iso alpha3      iso numeric     fips code       name    capital areaInSqKm      population      continent       languages       currency        geonameId
+// RU      RUS     643     RS      Russia  Moscow  1.71E7  144478050       EU      ru,tt,xal,cau,ady,kv,ce,tyv,cv,udm,tut,mns,bua,myv,mdf,chm,ba,inh,tut,kbd,krc,av,sah,nog        RUB     2017370
+#[derive(Debug, Deserialize)]
+struct CountryInfoRaw {
+    iso: String,
+    _iso3: String,
+    _iso_numeric: String,
+    _fips: String,
+    name: String,
+    _capital: String,
+    _area: String,
+    _population: usize,
+    _continent: String,
+    _languages: String,
+    _currency: String,
+    geonameid: usize,
 }
 
 // The table 'alternate names' :
@@ -75,7 +95,7 @@ struct CitiesRecordRaw {
 // to		  : to period when the name was used
 #[derive(Debug, Deserialize)]
 struct AlternateNamesRaw {
-    alternate_name_id: usize,
+    _alternate_name_id: usize,
     geonameid: usize,
     isolanguage: String,
     alternate_name: String,
@@ -83,8 +103,16 @@ struct AlternateNamesRaw {
     is_short_name: String,
     is_colloquial: String,
     is_historic: String,
-    from: String,
-    to: String,
+    _from: String,
+    _to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
+pub struct Country {
+    pub id: usize,
+    pub code: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,9 +122,10 @@ pub struct CitiesRecord {
     pub name: String,
     pub latitude: f64,
     pub longitude: f64,
-    pub country_code: String,
+    pub country: Option<Country>,
     pub timezone: String,
     pub names: Option<HashMap<String, String>>,
+    pub country_names: Option<HashMap<String, String>>,
     pub population: usize,
 }
 
@@ -275,6 +304,7 @@ impl Engine {
     pub fn new_from_files<P: AsRef<std::path::Path>>(
         cities: P,
         names: Option<P>,
+        countries: Option<P>,
         filter_languages: Vec<&str>,
     ) -> Result<Self, Box<dyn Error>> {
         let now = Instant::now();
@@ -312,16 +342,63 @@ impl Engine {
             now.elapsed().as_millis(),
         );
 
+        // load country info
+        let country_by_code: Option<HashMap<String, Country>> = match countries {
+            Some(counties_path) => {
+                let contents = std::fs::read_to_string(counties_path)?;
+                let now = Instant::now();
+
+                let mut rdr = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .delimiter(b'\t')
+                    .from_reader(contents.as_bytes());
+
+                let countries = rdr
+                    .deserialize()
+                    .into_iter()
+                    .filter_map(|row| {
+                        let record: CountryInfoRaw = row.ok()?;
+                        Some((
+                            record.iso.clone(),
+                            Country {
+                                id: record.geonameid,
+                                code: record.iso,
+                                name: record.name,
+                            },
+                        ))
+                    })
+                    .collect::<HashMap<String, Country>>();
+
+                log::info!(
+                    "Engine read {} countries took {}ms",
+                    countries.len(),
+                    now.elapsed().as_millis(),
+                );
+
+                Some(countries)
+            }
+            None => None,
+        };
+
         let mut names_by_id: Option<HashMap<usize, HashMap<String, String>>> = match names {
             Some(names_path) => {
                 let contents = std::fs::read_to_string(names_path)?;
                 let now = Instant::now();
 
                 // collect ids for cities
-                let geoids = records
+                let city_geoids = records
                     .iter()
                     .map(|item| item.geonameid)
                     .collect::<HashSet<usize>>();
+
+                let country_geoids = if let Some(ref country_by_code) = country_by_code {
+                    country_by_code
+                        .values()
+                        .map(|item| item.id)
+                        .collect::<HashSet<usize>>()
+                } else {
+                    HashSet::<usize>::new()
+                };
 
                 // TODO: split to N parts can split one geonameid and build not accurate index
                 // use rayon::current_num_threads() instead of 1
@@ -336,23 +413,32 @@ impl Engine {
                         let mut names_by_id: HashMap<usize, HashMap<String, AlternateNamesRaw>> =
                             HashMap::new();
 
+                        // cities
                         for row in rdr.deserialize().into_iter() {
                             let record: AlternateNamesRaw =
                                 if let Ok(r) = row { r } else { continue };
 
-                            if !geoids.contains(&record.geonameid) {
+                            let is_city_name = city_geoids.contains(&record.geonameid);
+                            let is_country_name = country_geoids.contains(&record.geonameid);
+
+                            if !is_city_name && !is_country_name {
                                 continue;
                             }
-                            // skip short names
-                            if record.is_short_name == "1" {
-                                continue;
+
+                            // skip short names for cities
+                            if is_city_name {
+                                if record.is_short_name == "1" {
+                                    continue;
+                                }
                             }
+
                             if record.is_colloquial == "1" {
                                 continue;
                             }
                             if record.is_historic == "1" {
                                 continue;
                             }
+
                             // filter by languages
                             if !filter_languages.contains(&record.isolanguage.as_str()) {
                                 continue;
@@ -470,12 +556,28 @@ impl Engine {
             for altname in record.alternatenames.split(',').into_iter() {
                 entries.push((record.geonameid, altname.to_lowercase().to_owned()));
             }
+
+            let country = if let Some(ref c) = country_by_code {
+                c.get(&record.country_code).cloned()
+            } else {
+                None
+            };
+
+            let country_names = if let Some(ref c) = country {
+                match names_by_id {
+                    Some(ref names) => names.get(&c.id).cloned(),
+                    None => None,
+                }
+            } else {
+                None
+            };
+
             geonames.insert(
                 record.geonameid,
                 CitiesRecord {
                     id: record.geonameid,
                     name: record.name,
-                    country_code: record.country_code,
+                    country,
                     latitude: record.latitude,
                     longitude: record.longitude,
                     timezone: record.timezone,
@@ -483,6 +585,7 @@ impl Engine {
                         Some(ref mut names) => names.remove(&record.geonameid),
                         None => None,
                     },
+                    country_names,
                     population: record.population,
                 },
             );
