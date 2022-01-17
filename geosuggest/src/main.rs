@@ -333,10 +333,7 @@ async fn main() -> std::io::Result<()> {
                     ))
                     .configure(move |cfg: &mut web::ServiceConfig| {
                         if let Some(static_dir) = settings.static_dir.as_ref() {
-                            cfg.service(
-                                fs::Files::new(&settings.url_path_prefix, static_dir)
-                                    .index_file("index.html"),
-                            );
+                            cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));
                         }
                     }),
             )
