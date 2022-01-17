@@ -208,7 +208,7 @@ impl Model {
                 )?)
             }
             _ => {
-                ConsoleService::log(&"not valid reverse input data".to_string());
+                ConsoleService::log("not valid reverse input data");
             }
         }
 

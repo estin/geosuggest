@@ -167,7 +167,7 @@ pub async fn reverse(
 
     let items = engine
         .reverse((query.lat, query.lng), query.limit.unwrap_or(10), query.k)
-        .unwrap_or_else(std::vec::Vec::new);
+        .unwrap_or_default();
 
     HttpResponse::Ok().json(&ReverseResult {
         time: now.elapsed().as_millis() as usize,
@@ -256,7 +256,7 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
     let openapi3_url_path = std::path::Path::new(&settings.url_path_prefix).join("openapi3.yaml");
     let openapi3_url_path = openapi3_url_path
         .to_str()
-        .ok_or_else(|| "Failed to build openapi3 url")?;
+        .ok_or("Failed to build openapi3 url")?;
 
     // render swagger ui html to temporary file
     OpenApiPlaceHolder::swagger_ui_html_to_file(

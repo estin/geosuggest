@@ -414,7 +414,7 @@ impl Engine {
                             HashMap::new();
 
                         // cities
-                        for row in rdr.deserialize().into_iter() {
+                        for row in rdr.deserialize() {
                             let record: AlternateNamesRaw =
                                 if let Ok(r) = row { r } else { continue };
 
@@ -426,10 +426,8 @@ impl Engine {
                             }
 
                             // skip short names for cities
-                            if is_city_name {
-                                if record.is_short_name == "1" {
-                                    continue;
-                                }
+                            if is_city_name && record.is_short_name == "1" {
+                                continue;
                             }
 
                             if record.is_colloquial == "1" {
@@ -553,7 +551,7 @@ impl Engine {
                 ));
             }
 
-            for altname in record.alternatenames.split(',').into_iter() {
+            for altname in record.alternatenames.split(',') {
                 entries.push((record.geonameid, altname.to_lowercase().to_owned()));
             }
 
