@@ -211,12 +211,22 @@ pub async fn geoip2(
             }
         },
         None => {
-            if let Some(peer_addr) = req.peer_addr() {
-                peer_addr.ip()
+            if let Some(v) = req.connection_info().remote() {
+                if let Ok(ip) = IpAddr::from_str(v.split(':').take(1).next().unwrap_or("")) {
+                    ip
+                } else {
+                    return HttpResponse::BadRequest().body(format!(
+                        "IP address does't declared in request and fieled to get peer addr"
+                    ));
+                }
             } else {
-                return HttpResponse::BadRequest().body(format!(
-                    "IP address does't declared in request and fieled to get peer addr"
-                ));
+                if let Some(peer_addr) = req.peer_addr() {
+                    peer_addr.ip()
+                } else {
+                    return HttpResponse::BadRequest().body(format!(
+                        "IP address does't declared in request and fieled to get peer addr"
+                    ));
+                }
             }
         }
     };
