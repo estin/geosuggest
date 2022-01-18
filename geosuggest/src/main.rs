@@ -215,18 +215,12 @@ pub async fn geoip2(
                 if let Ok(ip) = IpAddr::from_str(v.split(':').take(1).next().unwrap_or("")) {
                     ip
                 } else {
-                    return HttpResponse::BadRequest().body(format!(
-                        "IP address does't declared in request and fieled to get peer addr"
-                    ));
+                    return HttpResponse::BadRequest().body("IP address does't declared in request and fieled to get peer addr".to_string());
                 }
+            } else if let Some(peer_addr) = req.peer_addr() {
+                peer_addr.ip()
             } else {
-                if let Some(peer_addr) = req.peer_addr() {
-                    peer_addr.ip()
-                } else {
-                    return HttpResponse::BadRequest().body(format!(
-                        "IP address does't declared in request and fieled to get peer addr"
-                    ));
-                }
+                return HttpResponse::BadRequest().body("IP address does't declared in request and fieled to get peer addr".to_string());
             }
         }
     };
@@ -306,7 +300,7 @@ async fn main() -> std::io::Result<()> {
     if let Some(geoip2_file) = settings.geoip2_file.as_ref() {
         engine
             .load_geoip2(geoip2_file)
-            .expect(&format!("On read geoip2 file from {}", geoip2_file));
+            .unwrap_or_else(|_| panic!("On read geoip2 file from {}", geoip2_file));
     }
 
     let shared_engine = Arc::new(engine);

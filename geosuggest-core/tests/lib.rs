@@ -2,7 +2,7 @@ use geosuggest_core::Engine;
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
-use procinfo;
+
 #[cfg(feature = "geoip2_support")]
 use std::{net::IpAddr, str::FromStr};
 

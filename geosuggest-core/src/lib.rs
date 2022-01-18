@@ -685,7 +685,7 @@ impl Engine {
         // leak geoip buffer and reader with reference to buffer
         let buffer = std::fs::read(path)?;
         let buffer: &'static Vec<u8> = Box::leak(Box::new(buffer));
-        let reader = Reader::<City>::from_bytes(buffer).map_err(|e| GeoIP2Error(e))?;
+        let reader = Reader::<City>::from_bytes(buffer).map_err(GeoIP2Error)?;
         let reader: &'static Reader<City> = Box::leak(Box::new(reader));
 
         self.geoip2_reader = Some((buffer, reader));
