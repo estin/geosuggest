@@ -425,8 +425,11 @@ impl Engine {
                                 continue;
                             }
 
-                            // skip short names for cities
-                            if is_city_name && record.is_short_name == "1" {
+                            // skip short not preferred names for cities
+                            if is_city_name
+                                && record.is_short_name == "1"
+                                && record.is_prefered_name != "1"
+                            {
                                 continue;
                             }
 
