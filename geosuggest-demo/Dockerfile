@@ -5,8 +5,8 @@ ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
 ARG GEOSUGGEST_INDEX=geosuggest-index.json
 ARG CITIES=cities5000
 
-RUN apt update \
-    && apt -y install curl build-essential unzip pkg-config libssl-dev
+RUN apt-get update \
+    && apt-get -y install curl build-essential unzip pkg-config libssl-dev
 
 # geosuggest
 RUN cd /root \
