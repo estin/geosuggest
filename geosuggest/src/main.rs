@@ -22,6 +22,7 @@ use oaph::{
 
 mod settings;
 
+const DEFAULT_K: f64 = 0.000000005;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -42,6 +43,7 @@ pub struct ReverseQuery {
     /// isolanguage code
     lang: Option<String>,
     /// distance correction coefficient by city population `score(item) = item.distance - k * item.city.population`
+    /// by default `0.000000005`
     k: Option<f64>,
 }
 
@@ -166,7 +168,11 @@ pub async fn reverse(
     let now = Instant::now();
 
     let items = engine
-        .reverse((query.lat, query.lng), query.limit.unwrap_or(10), query.k)
+        .reverse(
+            (query.lat, query.lng),
+            query.limit.unwrap_or(10),
+            Some(query.k.unwrap_or(DEFAULT_K)),
+        )
         .unwrap_or_default();
 
     HttpResponse::Ok().json(&ReverseResult {
@@ -215,12 +221,17 @@ pub async fn geoip2(
                 if let Ok(ip) = IpAddr::from_str(v.split(':').take(1).next().unwrap_or("")) {
                     ip
                 } else {
-                    return HttpResponse::BadRequest().body("IP address does't declared in request and fieled to get peer addr".to_string());
+                    return HttpResponse::BadRequest().body(
+                        "IP address does't declared in request and fieled to get peer addr"
+                            .to_string(),
+                    );
                 }
             } else if let Some(peer_addr) = req.peer_addr() {
                 peer_addr.ip()
             } else {
-                return HttpResponse::BadRequest().body("IP address does't declared in request and fieled to get peer addr".to_string());
+                return HttpResponse::BadRequest().body(
+                    "IP address does't declared in request and fieled to get peer addr".to_string(),
+                );
             }
         }
     };
