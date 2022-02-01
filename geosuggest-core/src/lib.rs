@@ -163,6 +163,10 @@ pub struct Engine {
 }
 
 impl Engine {
+    pub fn get(&self, id: &usize) -> Option<&CitiesRecord> {
+        self.geonames.get(id)
+    }
+
     pub fn suggest(
         &self,
         pattern: &str,

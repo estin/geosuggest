@@ -20,12 +20,55 @@ fn app_config(cfg: &mut ServiceConfig) {
         .unwrap();
 
     let engine = Arc::new(engine);
-    cfg.data(engine).service((
+    cfg.state(engine).service((
+        web::resource("/get").to(super::city_get),
         web::resource("/suggest").to(super::suggest),
         web::resource("/reverse").to(super::reverse),
         #[cfg(feature = "geoip2_support")]
         web::resource("/geoip2").to(super::geoip2),
     ));
+}
+
+#[ntex::test]
+async fn api_get() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get().uri("/get?id=472045").to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let city = result.get("city");
+    assert!(!city.is_none());
+    let city = city.unwrap();
+    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Voronezh");
+
+    Ok(())
+}
+
+#[ntex::test]
+async fn api_get_lang() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/get?id=472045&lang=ru")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let city = result.get("city");
+    assert!(!city.is_none());
+    let city = city.unwrap();
+    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Воронеж");
+
+    Ok(())
 }
 
 #[ntex::test]

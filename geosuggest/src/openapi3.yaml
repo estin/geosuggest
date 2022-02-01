@@ -1,10 +1,23 @@
 openapi: 3.0.0
 info:
-  title: geosuggest 
-  version: 0.1.0
+  title: geosuggest
+  version: {{version}}
 servers:
-  - url: {{url_path_prefix}} 
+  - url: {{url_path_prefix}}
 paths:
+  /api/city/get:
+    get:
+      tags:
+      - get
+      description: retrieve city by geonameid
+      parameters:
+        {{GetCityQuery}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                {{GetCityResult}}
   /api/city/suggest:
     get:
       tags:
@@ -22,7 +35,7 @@ paths:
     get:
       tags:
       - reverse
-      description: find city by coordinates 
+      description: find city by coordinates
       parameters:
         {{ReverseQuery}}
       responses:
@@ -35,7 +48,7 @@ paths:
     get:
       tags:
       - geoip2
-      description: find city by IP address 
+      description: find city by IP address
       parameters:
         {{GeoIP2Query}}
       responses:

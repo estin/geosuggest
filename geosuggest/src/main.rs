@@ -26,6 +26,14 @@ const DEFAULT_K: f64 = 0.000000005;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetCityQuery {
+    /// geonameid of the City
+    id: usize,
+    /// isolanguage code
+    lang: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SuggestQuery {
     pattern: String,
     limit: Option<usize>,
@@ -54,6 +62,13 @@ pub struct GeoIP2Query {
     ip: Option<String>,
     /// isolanguage code
     lang: Option<String>,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct GetCityResult<'a> {
+    city: Option<CityResultItem<'a>>,
+    /// elapsed time in ms
+    time: usize,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -137,8 +152,25 @@ impl<'a> CityResultItem<'a> {
     }
 }
 
+pub async fn city_get(
+    engine: web::types::State<Arc<Engine>>,
+    web::types::Query(query): web::types::Query<GetCityQuery>,
+    _req: HttpRequest,
+) -> HttpResponse {
+    let now = Instant::now();
+
+    let city = engine
+        .get(&query.id)
+        .map(|city| CityResultItem::from_city(city, query.lang.as_deref()));
+
+    HttpResponse::Ok().json(&GetCityResult {
+        time: now.elapsed().as_millis() as usize,
+        city,
+    })
+}
+
 pub async fn suggest(
-    engine: web::types::Data<Arc<Engine>>,
+    engine: web::types::State<Arc<Engine>>,
     web::types::Query(query): web::types::Query<SuggestQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -161,7 +193,7 @@ pub async fn suggest(
 }
 
 pub async fn reverse(
-    engine: web::types::Data<Arc<Engine>>,
+    engine: web::types::State<Arc<Engine>>,
     web::types::Query(query): web::types::Query<ReverseQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -190,7 +222,7 @@ pub async fn reverse(
 
 #[cfg(feature = "geoip2_support")]
 pub async fn geoip2(
-    engine: web::types::Data<Arc<Engine>>,
+    engine: web::types::State<Arc<Engine>>,
     web::types::Query(query): web::types::Query<GeoIP2Query>,
     req: HttpRequest,
 ) -> HttpResponse {
@@ -250,9 +282,12 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
 
     // render openapi3 yaml to temporary file
     let aoph = OpenApiPlaceHolder::new()
+        .substitute("version", VERSION)
         .substitute("url_path_prefix", &settings.url_path_prefix)
+        .query_params::<GetCityQuery>("GetCityQuery")?
         .query_params::<SuggestQuery>("SuggestQuery")?
         .query_params::<ReverseQuery>("ReverseQuery")?
+        .schema::<GetCityResult>("GetCityResult")?
         .schema::<SuggestResult>("SuggestResult")?
         .schema::<ReverseResult>("ReverseResult")?;
 
@@ -327,7 +362,7 @@ async fn main() -> std::io::Result<()> {
         let settings = settings_clone.clone();
 
         App::new()
-            .data(shared_engine)
+            .state(shared_engine)
             // enable logger
             .wrap(middleware::Logger::default())
             .wrap(Cors::default())
@@ -335,6 +370,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope(&settings.url_path_prefix)
                     .service((
                         // api
+                        web::resource("/api/city/get").to(city_get),
                         web::resource("/api/city/suggest").to(suggest),
                         web::resource("/api/city/reverse").to(reverse),
                         #[cfg(feature = "geoip2_support")]
