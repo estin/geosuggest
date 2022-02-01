@@ -36,9 +36,9 @@ Build index file
 
 ```bash
 # download raw data from geonames
-$ curl -sL http://download.geonames.org/export/dump/cities15000.zip --output /tmp/cities1500.zip \
+$ curl -sL http://download.geonames.org/export/dump/cities15000.zip --output /tmp/cities15000.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output /tmp/alternateNamesV2.zip \
-    && unzip -d /tmp /tmp/cities1500.zip \
+    && unzip -d /tmp /tmp/cities15000.zip \
     && unzip -d /tmp /tmp/alternateNamesV2.zip
 
 # build index
