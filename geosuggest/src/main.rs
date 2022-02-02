@@ -23,6 +23,7 @@ use oaph::{
 mod settings;
 
 const DEFAULT_K: f64 = 0.000000005;
+const DEFAULT_NEAREST_CITIES_LIMIT: usize = 10;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -53,6 +54,9 @@ pub struct ReverseQuery {
     /// distance correction coefficient by city population `score(item) = item.distance - k * item.city.population`
     /// by default `0.000000005`
     k: Option<f64>,
+    /// neareset cities to apply distance correction coefficient by population
+    /// by default 10
+    nearest_limit: Option<usize>,
 }
 
 #[cfg(feature = "geoip2_support")]
@@ -202,7 +206,7 @@ pub async fn reverse(
     let items = engine
         .reverse(
             (query.lat, query.lng),
-            query.limit.unwrap_or(10),
+            query.nearest_limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT),
             Some(query.k.unwrap_or(DEFAULT_K)),
         )
         .unwrap_or_default();
@@ -211,6 +215,7 @@ pub async fn reverse(
         time: now.elapsed().as_millis() as usize,
         items: items
             .iter()
+            .take(query.limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT))
             .map(|item| ReverseResultItem {
                 city: CityResultItem::from_city(item.city, query.lang.as_deref()),
                 distance: item.distance,
