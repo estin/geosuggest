@@ -18,10 +18,18 @@ pub struct CountryItem {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct AdminDivisionItem {
+    id: usize,
+    code: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct CityResultItem {
     id: usize,
     name: String,
     country: Option<CountryItem>,
+    admin_division: Option<AdminDivisionItem>,
     timezone: String,
     latitude: f64,
     longitude: f64,
