@@ -104,10 +104,18 @@ pub struct CountryItem<'a> {
 }
 
 #[derive(Serialize, JsonSchema)]
+pub struct AdminDivisionItem<'a> {
+    id: usize,
+    code: &'a str,
+    name: &'a str,
+}
+
+#[derive(Serialize, JsonSchema)]
 pub struct CityResultItem<'a> {
     id: usize,
     name: &'a str,
     country: Option<CountryItem<'a>>,
+    admin_division: Option<AdminDivisionItem<'a>>,
     timezone: &'a str,
     latitude: f64,
     longitude: f64,
@@ -144,10 +152,25 @@ impl<'a> CityResultItem<'a> {
             None
         };
 
+        let admin_division = if let Some(ref admin1) = item.admin_division {
+            let admin1_name = match (lang, item.admin1_names.as_ref()) {
+                (Some(lang), Some(names)) => names.get(lang).unwrap_or(&admin1.name),
+                _ => &admin1.name,
+            };
+            Some(AdminDivisionItem {
+                id: admin1.id,
+                code: &admin1.code,
+                name: admin1_name,
+            })
+        } else {
+            None
+        };
+
         CityResultItem {
             id: item.id,
             name,
             country,
+            admin_division,
             timezone: &item.timezone,
             latitude: item.latitude,
             longitude: item.longitude,

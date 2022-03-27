@@ -16,6 +16,31 @@ use geoip2::{City, Reader};
 #[cfg(feature = "oaph_support")]
 use oaph::schemars::{self, JsonSchema};
 
+pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
+    pub cities: P,
+    pub names: Option<P>,
+    pub countries: Option<P>,
+    pub admin1_codes: Option<P>,
+    pub filter_languages: Vec<&'a str>,
+}
+
+// code, name, name ascii, geonameid
+#[derive(Debug, Deserialize)]
+struct Admin1CodeRecordRaw {
+    code: String,
+    name: String,
+    _asciiname: String,
+    geonameid: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
+pub struct AdminDivision {
+    pub id: usize,
+    pub code: String,
+    pub name: String,
+}
+
 // The main 'geoname' table has the following fields :
 // ---------------------------------------------------
 // geonameid         : integer id of record in geonames database
@@ -50,7 +75,7 @@ struct CitiesRecordRaw {
     feature_code: String,
     country_code: String,
     _cc2: String,
-    _admin1_code: String,
+    admin1_code: String,
     _admin2_code: String,
     _admin3_code: String,
     _admin4_code: String,
@@ -123,9 +148,11 @@ pub struct CitiesRecord {
     pub latitude: f64,
     pub longitude: f64,
     pub country: Option<Country>,
+    pub admin_division: Option<AdminDivision>,
     pub timezone: String,
     pub names: Option<HashMap<String, String>>,
     pub country_names: Option<HashMap<String, String>>,
+    pub admin1_names: Option<HashMap<String, String>>,
     pub population: usize,
 }
 
@@ -306,10 +333,13 @@ impl Engine {
     }
 
     pub fn new_from_files<P: AsRef<std::path::Path>>(
-        cities: P,
-        names: Option<P>,
-        countries: Option<P>,
-        filter_languages: Vec<&str>,
+        SourceFileOptions {
+            cities,
+            names,
+            countries,
+            filter_languages,
+            admin1_codes,
+        }: SourceFileOptions<P>,
     ) -> Result<Self, Box<dyn Error>> {
         let now = Instant::now();
 
@@ -384,6 +414,44 @@ impl Engine {
             None => None,
         };
 
+        // load admin code info
+        let admin1_by_code: Option<HashMap<String, AdminDivision>> = match admin1_codes {
+            Some(admin1_codes_path) => {
+                let contents = std::fs::read_to_string(admin1_codes_path)?;
+                let now = Instant::now();
+
+                let mut rdr = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .delimiter(b'\t')
+                    .from_reader(contents.as_bytes());
+
+                let admin_division = rdr
+                    .deserialize()
+                    .into_iter()
+                    .filter_map(|row| {
+                        let record: Admin1CodeRecordRaw = row.ok()?;
+                        Some((
+                            record.code.clone(),
+                            AdminDivision {
+                                id: record.geonameid,
+                                code: record.code,
+                                name: record.name,
+                            },
+                        ))
+                    })
+                    .collect::<HashMap<String, AdminDivision>>();
+
+                log::info!(
+                    "Engine read {} admin codes took {}ms",
+                    admin_division.len(),
+                    now.elapsed().as_millis(),
+                );
+
+                Some(admin_division)
+            }
+            None => None,
+        };
+
         let mut names_by_id: Option<HashMap<usize, HashMap<String, String>>> = match names {
             Some(names_path) => {
                 let contents = std::fs::read_to_string(names_path)?;
@@ -404,6 +472,15 @@ impl Engine {
                     HashSet::<usize>::new()
                 };
 
+                let admin1_geoids = if let Some(ref admin1_by_code) = admin1_by_code {
+                    admin1_by_code
+                        .values()
+                        .map(|item| item.id)
+                        .collect::<HashSet<usize>>()
+                } else {
+                    HashSet::<usize>::new()
+                };
+
                 // TODO: split to N parts can split one geonameid and build not accurate index
                 // use rayon::current_num_threads() instead of 1
                 let names_by_id = split_content_to_n_parts(&contents, 1)
@@ -417,15 +494,15 @@ impl Engine {
                         let mut names_by_id: HashMap<usize, HashMap<String, AlternateNamesRaw>> =
                             HashMap::new();
 
-                        // cities
                         for row in rdr.deserialize() {
                             let record: AlternateNamesRaw =
                                 if let Ok(r) = row { r } else { continue };
 
                             let is_city_name = city_geoids.contains(&record.geonameid);
                             let is_country_name = country_geoids.contains(&record.geonameid);
+                            let is_admin1_name = admin1_geoids.contains(&record.geonameid);
 
-                            if !is_city_name && !is_country_name {
+                            if !is_city_name && !is_country_name && !is_admin1_name {
                                 continue;
                             }
 
@@ -577,12 +654,29 @@ impl Engine {
                 None
             };
 
+            let admin_division = if let Some(ref a) = admin1_by_code {
+                a.get(&format!("{}.{}", record.country_code, record.admin1_code))
+                    .cloned()
+            } else {
+                None
+            };
+
+            let admin1_names = if let Some(ref a) = admin_division {
+                match names_by_id {
+                    Some(ref names) => names.get(&a.id).cloned(),
+                    None => None,
+                }
+            } else {
+                None
+            };
+
             geonames.insert(
                 record.geonameid,
                 CitiesRecord {
                     id: record.geonameid,
                     name: record.name,
                     country,
+                    admin_division,
                     latitude: record.latitude,
                     longitude: record.longitude,
                     timezone: record.timezone,
@@ -591,6 +685,7 @@ impl Engine {
                         None => None,
                     },
                     country_names,
+                    admin1_names,
                     population: record.population,
                 },
             );

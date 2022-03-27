@@ -1,8 +1,7 @@
-use geosuggest_core::Engine;
+use geosuggest_core::{Engine, SourceFileOptions};
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
-
 #[cfg(feature = "geoip2_support")]
 use std::{net::IpAddr, str::FromStr};
 
@@ -15,21 +14,24 @@ fn get_engine(
     names: Option<&str>,
     countries: Option<&str>,
 ) -> Result<geosuggest_core::Engine, Box<dyn Error>> {
-    Engine::new_from_files(
-        cities.unwrap_or("tests/misc/cities-ru.txt"),
-        Some(names.unwrap_or("tests/misc/names.txt")),
-        Some(countries.unwrap_or("tests/misc/country-info.txt")),
-        vec![],
-    )
+    Engine::new_from_files(SourceFileOptions {
+        cities: cities.unwrap_or("tests/misc/cities-ru.txt"),
+        names: Some(names.unwrap_or("tests/misc/names.txt")),
+        countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
+        filter_languages: vec![],
+        admin1_codes: Some("tests/misc/admin1-codes.txt"),
+    })
 }
 
 #[test]
 fn suggest() -> Result<(), Box<dyn Error>> {
     init();
     let engine = get_engine(None, None, None)?;
-    let result = engine.suggest("voronezh", 1, None);
-    assert_eq!(result.len(), 1);
-    assert_eq!(result[0].name, "Voronezh");
+    let items = engine.suggest("voronezh", 1, None);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "Voronezh");
+    assert_eq!(items[0].country.as_ref().unwrap().name, "Russia");
+    assert_eq!(items[0].admin_division.as_ref().unwrap().name, "Voronezj");
     Ok(())
 }
 
@@ -42,6 +44,11 @@ fn reverse() -> Result<(), Box<dyn Error>> {
     let items = result.unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].city.name, "Voronezh");
+    assert_eq!(items[0].city.country.as_ref().unwrap().name, "Russia");
+    assert_eq!(
+        items[0].city.admin_division.as_ref().unwrap().name,
+        "Voronezj"
+    );
 
     Ok(())
 }

@@ -19,13 +19,11 @@ pub struct Settings {
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        let mut s = Config::new();
+        let mut s = Config::builder();
 
         log::info!("Try read config from: {}", CONFIG_FILE_PATH);
         if Path::new(CONFIG_FILE_PATH).exists() {
-            if let Err(e) = s.merge(File::with_name(CONFIG_FILE_PATH).required(false)) {
-                log::info!("{}", e);
-            };
+            s = s.add_source(File::with_name(CONFIG_FILE_PATH).required(false))
         }
 
         log::info!(
@@ -33,16 +31,16 @@ impl Settings {
             CONFIG_FILE_ENV_PATH_KEY
         );
         if let Ok(config_path) = std::env::var(CONFIG_FILE_ENV_PATH_KEY) {
-            s.merge(File::with_name(&config_path))?;
+            s = s.add_source(File::with_name(&config_path));
         };
 
         log::info!(
             "Try read and merge in config from environment variables with prefix {}",
             CONFIG_PREFIX
         );
-        s.merge(Environment::with_prefix(CONFIG_PREFIX).separator("__"))?;
+        s = s.add_source(Environment::with_prefix(CONFIG_PREFIX).separator("__"));
 
-        s.try_into()
+        s.build()?.try_deserialize()
     }
 }
 

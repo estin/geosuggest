@@ -1,7 +1,7 @@
 use getopts::Options;
 use std::env;
 
-use geosuggest_core::Engine;
+use geosuggest_core::{Engine, SourceFileOptions};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -19,6 +19,12 @@ fn main() -> std::io::Result<()> {
     opts.optopt("o", "output", "set output index file name", "INDEX");
     opts.optopt("c", "cities", "set geonames cities file name", "CITIES");
     opts.optopt("n", "names", "set geonames names file name", "NAMES");
+    opts.optopt(
+        "a",
+        "admin1_codes",
+        "set geonames admin1 codes file name",
+        "ADMIN1_CODES",
+    );
     opts.optopt(
         "",
         "countries",
@@ -63,6 +69,8 @@ fn main() -> std::io::Result<()> {
 
     let countries_file = matches.opt_str("countries");
 
+    let admin1_codes_file = matches.opt_str("a");
+
     let languages_filter = matches
         .opt_str("l")
         .map(|v| {
@@ -78,12 +86,13 @@ fn main() -> std::io::Result<()> {
             }
         });
 
-    let engine = Engine::new_from_files(
-        &cities_file,
-        names_file.as_ref(),
-        countries_file.as_ref(),
-        languages_filter.iter().map(AsRef::as_ref).collect(),
-    )
+    let engine = Engine::new_from_files(SourceFileOptions {
+        cities: &cities_file,
+        names: names_file.as_ref(),
+        countries: countries_file.as_ref(),
+        filter_languages: languages_filter.iter().map(AsRef::as_ref).collect(),
+        admin1_codes: admin1_codes_file.as_ref(),
+    })
     .unwrap_or_else(|e| {
         panic!(
             "On build index from {} or {:?} - {}",

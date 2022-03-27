@@ -1,0 +1,83 @@
+RU.88	Yaroslavl Oblast	Yaroslavl Oblast	468898
+RU.86	Voronezj	Voronezj	472039
+RU.85	Vologda	Vologda	472454
+RU.84	Volgograd Oblast	Volgograd Oblast	472755
+RU.81	Ulyanovsk	Ulyanovsk	479119
+RU.80	Udmurtiya Republic	Udmurtiya Republic	479613
+RU.77	Tver’ Oblast	Tver' Oblast	480041
+RU.76	Tula	Tula	480508
+RU.73	Tatarstan Republic	Tatarstan Republic	484048
+RU.72	Tambov	Tambov	484638
+RU.70	Stavropol’ Kray	Stavropol' Kray	487839
+RU.69	Smolenskaya Oblast’	Smolenskaya Oblast'	491684
+RU.67	Saratovskaya Oblast	Saratovskaya Oblast	498671
+RU.65	Samara Oblast	Samara Oblast	499068
+RU.62	Ryazan Oblast	Ryazan Oblast	500059
+RU.61	Rostov	Rostov	501165
+RU.60	Pskov Oblast	Pskov Oblast	504338
+RU.90	Perm	Perm	511180
+RU.57	Penza	Penza	511555
+RU.56	Orel Oblast	Orel Oblast	514801
+RU.55	Orenburg Oblast	Orenburg Oblast	515001
+RU.52	Novgorod Oblast	Novgorod Oblast	519324
+RU.68	North Ossetia	North Ossetia	519969
+RU.50	Nenets	Nenets	522652
+RU.49	Murmansk	Murmansk	524304
+RU.48	Moscow	Moscow	524894
+RU.47	Moscow Oblast	Moscow Oblast	524925
+RU.46	Mordoviya Republic	Mordoviya Republic	525369
+RU.45	Mariy-El Republic	Mariy-El Republic	529352
+RU.43	Lipetsk Oblast	Lipetsk Oblast	535120
+RU.42	Leningradskaya Oblast'	Leningradskaya Oblast'	536199
+RU.66	St.-Petersburg	St.-Petersburg	536203
+RU.41	Kursk	Kursk	538555
+RU.38	Krasnodarskiy	Krasnodarskiy	542415
+RU.37	Kostroma Oblast	Kostroma Oblast	543871
+RU.34	Komi	Komi	545854
+RU.33	Kirov	Kirov	548389
+RU.28	Karelia	Karelia	552548
+RU.27	Karachayevo-Cherkesiya Republic	Karachayevo-Cherkesiya Republic	552927
+RU.25	Kaluga	Kaluga	553899
+RU.24	Kalmykiya Republic	Kalmykiya Republic	553972
+RU.23	Kaliningrad	Kaliningrad	554230
+RU.22	Kabardino-Balkariya Republic	Kabardino-Balkariya Republic	554667
+RU.21	Ivanovo	Ivanovo	555235
+RU.19	Ingushetiya Republic	Ingushetiya Republic	556349
+RU.51	Nizhny Novgorod Oblast	Nizhny Novgorod Oblast	559838
+RU.17	Dagestan	Dagestan	567293
+RU.16	Chuvashia	Chuvashia	567395
+RU.12	Chechnya	Chechnya	569665
+RU.10	Bryansk Oblast	Bryansk Oblast	571473
+RU.09	Belgorod Oblast	Belgorod Oblast	578071
+RU.08	Bashkortostan Republic	Bashkortostan Republic	578853
+RU.07	Astrakhan	Astrakhan	580491
+RU.06	Arkhangelskaya	Arkhangelskaya	581043
+RU.01	Adygeya Republic	Adygeya Republic	584222
+RU.83	Vladimir	Vladimir	826294
+RU.87	Yamalo-Nenets	Yamalo-Nenets	1486462
+RU.78	Tyumen’ Oblast	Tyumen' Oblast	1488747
+RU.79	Republic of Tyva	Republic of Tyva	1488873
+RU.75	Tomsk Oblast	Tomsk Oblast	1489421
+RU.71	Sverdlovsk	Sverdlovsk	1490542
+RU.54	Omsk	Omsk	1496152
+RU.53	Novosibirsk Oblast	Novosibirsk Oblast	1496745
+RU.40	Kurgan Oblast	Kurgan Oblast	1501312
+RU.91	Krasnoyarskiy	Krasnoyarskiy	1502020
+RU.32	Khanty-Mansia	Khanty-Mansia	1503773
+RU.31	Khakasiya Republic	Khakasiya Republic	1503834
+RU.29	Kemerovo Oblast	Kemerovo Oblast	1503900
+RU.03	Altai	Altai	1506272
+RU.13	Chelyabinsk	Chelyabinsk	1508290
+RU.04	Altai Krai	Altai Krai	1511732
+RU.63	Sakha	Sakha	2013162
+RU.59	Primorskiy (Maritime) Kray	Primorskiy (Maritime) Kray	2017623
+RU.30	Khabarovsk	Khabarovsk	2022888
+RU.20	Irkutsk Oblast	Irkutsk Oblast	2023468
+RU.89	Jewish Autonomous Oblast	Jewish Autonomous Oblast	2026639
+RU.05	Amur Oblast	Amur Oblast	2027748
+RU.11	Buryatiya Republic	Buryatiya Republic	2050915
+RU.64	Sakhalin Oblast	Sakhalin Oblast	2121529
+RU.44	Magadan Oblast	Magadan Oblast	2123627
+RU.92	Kamchatka	Kamchatka	2125072
+RU.15	Chukotka	Chukotka	2126099
+RU.93	Transbaikal Territory	Transbaikal Territory	7779061

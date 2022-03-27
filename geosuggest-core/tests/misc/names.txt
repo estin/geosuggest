@@ -384,3 +384,17 @@
 16930770	2017370	wo	Risi	1					
 16930771	2017370	yi	רוסלאַנד	1					
 16930772	2017370	zh	俄罗斯	1					
+289152	472039		Voronezh Oblast						
+2185009	472039		Voronezj		1				
+2187586	472039	nb	Voronezj						
+2187587	472039	nn	Voronezj						
+2298618	472039	ru	Воронежская область	1					
+2417609	472039	sv	Voronezj						
+2486429	472039	no	Voronezjskaja oblast						
+2923672	472039	link	https://en.wikipedia.org/wiki/Voronezh_Oblast						
+3047886	472039	link	https://ru.wikipedia.org/wiki/%D0%92%D0%BE%D1%80%D0%BE%D0%BD%D0%B5%D0%B6%D1%81%D0%BA%D0%B0%D1%8F_%D0%BE%D0%B1%D0%BB%D0%B0%D1%81%D1%82%D1%8C						
+5649326	472039		Voronezhskaya Oblast’						
+8656351	472039	ru	Воронежская Область						
+11761722	472039	fr	Oblast de Voronej						
+12132450	472039	fi	Voronežin alue						
+13287630	472039	de	Woronesch		1				

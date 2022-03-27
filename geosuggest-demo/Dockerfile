@@ -20,6 +20,7 @@ RUN cd /root \
 RUN cd /tmp \ 
     && curl -sL http://download.geonames.org/export/dump/$CITIES.zip --output $CITIES.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output alternateNamesV2.zip \
+    && curl -sL http://download.geonames.org/export/dump/admin1CodesASCII.txt --output /tmp/admin1CodesASCII.txt \
     && unzip $CITIES.zip \
     && unzip alternateNamesV2.zip
 
@@ -27,6 +28,7 @@ RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index \
     -c /tmp/$CITIES.txt \
     -n /tmp/alternateNamesV2.txt \
+    -a /tmp/admin1CodesASCII.txt \
     -l ru,uk,be,zh,ja \
     --countries=/root/geosuggest-release/geosuggest-core/tests/misc/country-info.txt \
     -o /opt/$GEOSUGGEST_INDEX
@@ -61,4 +63,4 @@ RUN echo "host = '0.0.0.0'" >> /opt/geosuggest-settings.toml \
 
 # pass $PORT to $GEOSUGGEST_PORT
 ENTRYPOINT []
-CMD GEOSUGGEST_PORT=$PORT geosuggest
+CMD GEOSUGGEST__PORT=$PORT geosuggest

@@ -1,4 +1,4 @@
-use geosuggest_core::Engine;
+use geosuggest_core::{Engine, SourceFileOptions};
 use ntex::web::{test, App, Error, ServiceConfig};
 use ntex::Service;
 use ntex::{http, web};
@@ -6,12 +6,13 @@ use ntex::{http, web};
 use std::sync::Arc;
 
 fn app_config(cfg: &mut ServiceConfig) {
-    let mut engine = Engine::new_from_files(
-        "../geosuggest-core/tests/misc/cities-ru.txt",
-        Some("../geosuggest-core/tests/misc/names.txt"),
-        Some("../geosuggest-core/tests/misc/country-info.txt"),
-        vec!["ru"],
-    )
+    let mut engine = Engine::new_from_files(SourceFileOptions {
+        cities: "../geosuggest-core/tests/misc/cities-ru.txt",
+        names: Some("../geosuggest-core/tests/misc/names.txt"),
+        countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
+        filter_languages: vec!["ru"],
+        admin1_codes: Some("../geosuggest-core/tests/misc/admin1-codes.txt"),
+    })
     .unwrap();
 
     #[cfg(feature = "geoip2_support")]
@@ -68,6 +69,29 @@ async fn api_get_lang() -> Result<(), Error> {
     let city = city.unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Воронеж");
 
+    assert_eq!(
+        city.get("country")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Россия"
+    );
+    assert_eq!(
+        city.get("admin_division")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Воронежская область"
+    );
+
     Ok(())
 }
 
@@ -120,6 +144,18 @@ async fn api_suggest_lang() -> Result<(), Error> {
             .as_str()
             .unwrap(),
         "Россия"
+    );
+    assert_eq!(
+        items[0]
+            .get("admin_division")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Воронежская область"
     );
 
     Ok(())
@@ -200,6 +236,22 @@ async fn api_reverse_lang() -> Result<(), Error> {
             .as_str()
             .unwrap(),
         "Россия"
+    );
+    assert_eq!(
+        items[0]
+            .get("city")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("admin_division")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Воронежская область"
     );
 
     Ok(())

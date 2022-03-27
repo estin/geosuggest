@@ -1,5 +1,5 @@
 <div align="center">
- <p><h1>geosuggest</h1> </p>
+  <p><h1>geosuggest</h1> </p>
   <p><strong>Library/Service to suggest and to find nearest by coordinates cities</strong></p>
   <p></p>
 </div>
@@ -14,7 +14,7 @@ Main features:
  - MaxMind GeoIP2(Lite) city database support
  - multilang (based on configured index options)
  - simple REST http api
- - no extral api used
+ - no external services used
 
 ### Based on:
  - [strsim](https://crates.io/crates/strsim)
@@ -38,6 +38,7 @@ Build index file
 # download raw data from geonames
 $ curl -sL http://download.geonames.org/export/dump/cities15000.zip --output /tmp/cities15000.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output /tmp/alternateNamesV2.zip \
+    && curl -sL http://download.geonames.org/export/dump/admin1CodesASCII.txt --output /tmp/admin1CodesASCII.txt \
     && unzip -d /tmp /tmp/cities15000.zip \
     && unzip -d /tmp /tmp/alternateNamesV2.zip
 
@@ -45,6 +46,7 @@ $ curl -sL http://download.geonames.org/export/dump/cities15000.zip --output /tm
 $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- \
     -c /tmp/cities15000.txt \
     -n /tmp/alternateNamesV2.txt \
+    -a /tmp/admin1CodesASCII.txt \
     -l ru,uk,be,zh,ja \
     --countries geosuggest-core/tests/misc/country-info.txt \
     -o /tmp/geosuggest-index.json
@@ -54,9 +56,10 @@ Run
 
 ```bash
 $ RUST_LOG=geosuggest=trace \
-    GEOSUGGEST_INDEX_FILE=/tmp/geosuggest-index.json \
-    GEOSUGGEST_HOST=127.0.0.1 \
-    GEOSUGGEST_PORT=8080 \
+    GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.json \
+    GEOSUGGEST__HOST=127.0.0.1 \
+    GEOSUGGEST__PORT=8080 \
+    GEOSUGGEST__URL_PATH_PREFIX="/" \
     cargo run -p geosuggest --bin geosuggest --release
 ```
 
@@ -73,6 +76,11 @@ $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
         "id": 2017370,
         "code": "RU",
         "name": "Russia"
+      },
+      "admin_division": {
+        "id": 472039,
+        "code": "RU.86",
+        "name": "Voronezj"
       },
       "timezone": "Europe/Moscow",
       "latitude": 51.67204,

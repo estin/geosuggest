@@ -1,6 +1,6 @@
 [package]
 name = "geosuggest"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 
 default-run = "geosuggest"
@@ -20,10 +20,10 @@ log = "0.4"
 env_logger = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 
-ntex = { version = "0.5.14" }
+ntex = { version = "0.5.15" }
 ntex-files = "0.1"
 ntex-cors = "0.2"
-config = "0.11"
+config = "0.12"
 geosuggest-core = { path = "../geosuggest-core", features = ["oaph_support"] }
 
 # openapi3
