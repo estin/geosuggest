@@ -1,30 +1,28 @@
 use serde::{Deserialize, Serialize};
 
+use reqwasm;
+use reqwasm::http::Request;
+use sycamore::futures::{create_resource, spawn_local_scoped};
+use sycamore::prelude::*;
 use wasm_bindgen::prelude::*;
-use yew::format::{Json, Nothing};
-use yew::services::fetch::{
-    Credentials, FetchOptions, FetchService, FetchTask, Mode, Request, Response,
-};
-use yew::services::ConsoleService;
-use yew::{html, ChangeData, Component, ComponentLink, Html, InputData, ShouldRender};
 
 mod bindings;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CountryItem {
     id: usize,
     code: String,
     name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AdminDivisionItem {
     id: usize,
     code: String,
     name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CityResultItem {
     id: usize,
     name: String,
@@ -53,43 +51,9 @@ pub struct ReverseItem {
     pub score: f64,
 }
 
-pub enum Msg {
-    FetchResourceFailed,
-    SuggestInput(String),
-    SuggestResult(SuggestResult),
-    SuggestItemSelected(usize),
-    LanguageSelected(ChangeData),
-    ReverseLatInput(String),
-    ReverseLngInput(String),
-    ReverseFind,
-    ReverseResult(ReverseResult),
-    MapDblClick(f64, f64),
-    MinScoreInput(String),
-    DistanceCoefficient(String),
-}
-
-pub struct Model {
-    link: ComponentLink<Self>,
-    suggest_selected_item: Option<usize>,
-    suggest_items: Option<Vec<CityResultItem>>,
-    lang: Option<String>,
-    reverse_lng: Option<f64>,
-    reverse_lat: Option<f64>,
-    _ft: Option<FetchTask>,
-    reverse_result: Option<ReverseItem>,
-    loading: bool,
-    map_dblclick_closure: Closure<dyn FnMut(f64, f64)>,
-    min_score: String,
-    distance_coefficient: String,
-}
-
-#[inline]
-fn get_api_url(method: &str) -> String {
-    format!(
-        "{}{}",
-        option_env!("GEOSUGGEST_BASE_API_URL").unwrap_or("http://127.0.0.1:8090"),
-        method
-    )
+#[derive(Debug)]
+pub struct SelectedCity {
+    pub city: Option<CityResultItem>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -101,11 +65,20 @@ pub struct SuggestQuery<'a> {
     min_score: Option<f64>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SuggestResult {
     items: Vec<CityResultItem>,
     /// elapsed time in ms
     time: usize,
+}
+
+impl SuggestResult {
+    fn new() -> Self {
+        SuggestResult {
+            items: Vec::new(),
+            time: 0,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -125,380 +98,341 @@ pub struct ReverseResult {
     time: usize,
 }
 
-impl Model {
-    fn suggest(&mut self, text: &str) -> Result<(), Box<dyn std::error::Error>> {
-        if text.is_empty() {
-            self.suggest_items = None;
-            self.suggest_selected_item = None;
-            return Ok(());
+fn get_api_url(method: &str) -> String {
+    format!(
+        "{}{}",
+        option_env!("GEOSUGGEST_BASE_API_URL").unwrap_or("http://127.0.0.1:8090"),
+        method
+    )
+}
+
+async fn fetch_suggest<'a>(query: SuggestQuery<'a>) -> Result<SuggestResult, reqwasm::Error> {
+    if query.pattern.is_empty() {
+        return Ok(SuggestResult::new());
+    }
+    let url = get_api_url(&format!(
+        "/api/city/suggest?{}",
+        serde_qs::to_string(&query).unwrap(),
+    ));
+    let resp = Request::get(&url).send().await?;
+
+    let body = resp.json::<SuggestResult>().await?;
+    Ok(body)
+}
+
+async fn fetch_reverse<'a>(query: ReverseQuery<'a>) -> Result<ReverseResult, reqwasm::Error> {
+    let url = get_api_url(&format!(
+        "/api/city/reverse?{}",
+        serde_qs::to_string(&query).unwrap(),
+        // serde_qs::to_string(&query).map_err(|e| { reqwasm::Error::SerdeError(e.to_string()) })?,
+    ));
+    let resp = Request::get(&url).send().await?;
+
+    let body = resp.json::<ReverseResult>().await?;
+    Ok(body)
+}
+
+#[derive(Prop)]
+struct SuggestProps<'a> {
+    text: &'a ReadSignal<String>,
+    lang: &'a ReadSignal<String>,
+    min_score: &'a ReadSignal<String>,
+}
+
+#[component]
+async fn SuggestItems<'a, G: Html>(cx: Scope<'a>, props: SuggestProps<'a>) -> View<G> {
+    let show_suggest = create_signal(cx, true);
+    let selected_item = use_context::<RcSignal<SelectedCity>>(cx);
+
+    create_effect(cx, || {
+        // subscriber to text change
+        let _ = props.text.get();
+
+        // show suggest on text changed
+        if !*show_suggest.get_untracked() {
+            show_suggest.set(true);
+        }
+    });
+
+    let handle_select = move |item| {
+        show_suggest.set(false);
+        selected_item.set(SelectedCity { city: Some(item) });
+    };
+
+    let view = create_memo(cx, move || {
+        if !*show_suggest.get() {
+            return view! {cx, };
+        }
+        if props.text.get().is_empty() {
+            return view! {cx, };
         }
 
-        self.loading = true;
-        let query = SuggestQuery {
-            pattern: text,
-            limit: Some(5),
-            lang: self.lang.as_deref(),
-            min_score: self.min_score.parse().ok(),
-        };
-        let request = Request::get(get_api_url(&format!(
-            "/api/city/suggest?{}",
-            serde_qs::to_string(&query)?,
-        )))
-        .header("Access-Control-Request-Method", "GET")
-        .body(Nothing)
-        .expect("Failed to build request.");
+        let text = (*props.text.get()).clone();
+        let lang = (*props.lang.get()).clone();
+        let min_score = (*props.min_score.get()).clone();
 
-        let callback = self.link.callback(
-            |response: Response<Json<Result<SuggestResult, anyhow::Error>>>| {
-                if let (meta, Json(Ok(body))) = response.into_parts() {
-                    if meta.status.is_success() {
-                        return Msg::SuggestResult(body);
+        let pattern = create_ref(cx, text.clone());
+        let lang = create_ref(cx, lang.clone());
+        let min_score = create_ref(cx, min_score.clone());
+        let query = SuggestQuery {
+            pattern,
+            limit: Some(10),
+            lang: Some(lang),
+            min_score: min_score.parse::<f64>().ok(),
+        };
+        let items = create_resource(cx, fetch_suggest(query));
+
+        view! {cx,
+            div {
+                (
+                    {
+                        if let Some(data) = items.get().as_ref() {
+                            if let Ok(d) = data {
+                                let views = View::new_fragment(
+                                    d.items.iter().cloned().map(|item| {
+                                        let country = item.get_country().to_owned();
+                                        let name = item.name.to_owned();
+                                        view! { cx,
+                                            li(on:click=move |_| handle_select(item.clone()),class="px-2 py-3 space-x-2 hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white focus:outline-none"){
+                                                (name) " " (country)
+                                            }
+                                        }
+                                    }).collect()
+                                );
+                                view! {cx,
+                                    aside(role="menu",class="absolute z-10 flex flex-col items-start w-64 bg-white border rounded-md shadow-md mt-1") {
+                                        ul(class="flex flex-col w-full") {
+                                            (views)
+                                        }
+                                    }
+                                }
+                            } else {
+                                view! {cx, "Error on fetch"}
+                            }
+                        } else {
+                            view! {cx, "loading..."}
+                        }
+                    }
+                )
+            }
+        }
+    });
+
+    view! {cx, div { ((*view.get()).clone()) }}
+}
+
+#[component]
+async fn ResultView<'a, G: Html>(cx: Scope<'a>) -> View<G> {
+    let selected_item = use_context::<RcSignal<SelectedCity>>(cx);
+    view! {cx,
+        (match selected_item.get().city {
+            Some(ref city) => {
+                let pretty = serde_json::to_string_pretty(&city).unwrap_or_else(|e| format!("Error: {}", e));
+
+                view! {cx,
+                    div(class="w-full px-2 py-1 pb-4") {
+                        p(class="font-semibold"){ "City:" }
+                        code {
+                            pre { (pretty) }
+                        }
                     }
                 }
-                Msg::FetchResourceFailed
-            },
-        );
-
-        self._ft = Some(FetchService::fetch_with_options(
-            request,
-            FetchOptions {
-                mode: Some(Mode::Cors),
-                credentials: Some(Credentials::SameOrigin),
-                ..FetchOptions::default()
-            },
-            callback,
-        )?);
-
-        Ok(())
-    }
-    fn reverse(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        match (self.reverse_lat, self.reverse_lng) {
-            (Some(lat), Some(lng)) => {
-                ConsoleService::log(&format!("Rerverse find {} {}", lat, lng));
-                self.loading = true;
-                let query = ReverseQuery {
-                    lat,
-                    lng,
-                    lang: self.lang.as_deref(),
-                    k: self.distance_coefficient.parse().ok(),
-                };
-                let request = Request::get(get_api_url(&format!(
-                    "/api/city/reverse?{}",
-                    serde_qs::to_string(&query)?,
-                )))
-                .header("Access-Control-Request-Method", "GET")
-                .body(Nothing)
-                .expect("Failed to build request.");
-
-                let callback = self.link.callback(
-                    |response: Response<Json<Result<ReverseResult, anyhow::Error>>>| {
-                        if let (meta, Json(Ok(body))) = response.into_parts() {
-                            if meta.status.is_success() {
-                                ConsoleService::log(&format!(
-                                    "Data: {:?}",
-                                    serde_json::to_string(&body)
-                                ));
-                                return Msg::ReverseResult(body);
-                            }
-                        }
-                        Msg::FetchResourceFailed
-                    },
-                );
-
-                self._ft = Some(FetchService::fetch_with_options(
-                    request,
-                    FetchOptions {
-                        mode: Some(Mode::Cors),
-                        credentials: Some(Credentials::SameOrigin),
-                        ..FetchOptions::default()
-                    },
-                    callback,
-                )?)
             }
-            _ => {
-                ConsoleService::log("not valid reverse input data");
-            }
-        }
-
-        Ok(())
+            _ => view! {cx, }
+        })
     }
 }
 
-// fn tooltip(text: &str) -> Html {
-//     html! {
-//         <div class="relative flex flex-col items-center group inline-block">
-//            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-//                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-//            </svg>
-//            <div class="absolute bottom-0 flex flex-col items-center hidden mb-6 group-hover:flex">
-//                <span class="relative z-10 p-2 text-xs leading-none text-white whitespace-no-wrap bg-black shadow-lg">{text}</span>
-//                <div class="w-3 h-3 -mt-2 rotate-45 bg-black"></div>
-//            </div>
-//        </div>
-//     }
-// }
+#[component]
+fn App<G: Html>(cx: Scope) -> View<G> {
+    // common settings
+    let min_score = create_signal(cx, "0.8".to_string());
+    let distance_coefficient = create_signal(cx, "0.000000005".to_string());
+    let language = create_signal(cx, String::new());
 
-impl Component for Model {
-    type Message = Msg;
-    type Properties = ();
+    let suggest_input = create_signal(cx, String::new());
+    let reverse_lat = create_signal(cx, String::new());
+    let reverse_lng = create_signal(cx, String::new());
 
-    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let link_clone = link.clone();
+    // result city
+    let selected_item = create_rc_signal(SelectedCity { city: None });
+    let selected_item_clone = selected_item.clone();
+    provide_context(cx, selected_item);
 
-        Self {
-            link,
-            _ft: None,
-            suggest_items: None,
-            suggest_selected_item: None,
-            loading: false,
-            lang: None,
-            reverse_lat: None,
-            reverse_lng: None,
-            reverse_result: None,
-            min_score: 0.8.to_string(),
-            distance_coefficient: 0.000000005.to_string(),
-            map_dblclick_closure: Closure::wrap(Box::new(move |lat: f64, lng: f64| {
-                ConsoleService::log(&format!("map doubl click {} {}", lat, lng));
-                link_clone.send_message(Msg::MapDblClick(lat, lng));
-            }) as Box<dyn FnMut(f64, f64)>),
+    let do_reverse = Box::new(move || {
+        let lat = (*reverse_lat.get_untracked()).clone();
+        let lng = (*reverse_lng.get_untracked()).clone();
+
+        if lat.is_empty() || lng.is_empty() {
+            return;
         }
-    }
 
-    fn rendered(&mut self, first_render: bool) {
-        if first_render {
-            bindings::map_init(&self.map_dblclick_closure);
-        }
-    }
+        let lang = (*language.get_untracked()).clone();
 
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        match msg {
-            Msg::SuggestInput(v) => {
-                self.suggest_items = None;
-                self.reverse_result = None;
-                if let Err(e) = self.suggest(v.as_str()) {
-                    ConsoleService::log(&format!("Error: {}", e));
-                }
-                true
-            }
-            Msg::SuggestResult(result) => {
-                self.loading = false;
-                self.reverse_result = None;
-                self.suggest_selected_item = None;
-                self.suggest_items = Some(result.items);
-                true
-            }
-            Msg::SuggestItemSelected(index) => {
-                self.suggest_selected_item = Some(index);
-                if let Some(items) = &self.suggest_items {
-                    if let Some(item) = items.get(index) {
-                        bindings::map_move(item.latitude, item.longitude);
+        let lat = lat.parse::<f64>();
+        let lng = lng.parse::<f64>();
+
+        let selected_item_clone = selected_item_clone.clone();
+        spawn_local_scoped(cx, async move {
+            match (lat, lng) {
+                (Ok(lat), Ok(lng)) => {
+                    let query = ReverseQuery {
+                        lat,
+                        lng,
+                        lang: Some(&lang),
+                        k: None,
+                    };
+                    if let Ok(result) = fetch_reverse(query).await {
+                        if let Some(item) = result.items.get(0) {
+                            selected_item_clone.set(SelectedCity {
+                                city: Some(item.city.clone()),
+                            });
+                        } else {
+                            selected_item_clone.set(SelectedCity { city: None });
+                        }
                     }
                 }
-                true
-            }
-            Msg::LanguageSelected(ChangeData::Select(lang)) => {
-                self.lang = Some(lang.value());
-                false
-            }
-            Msg::ReverseLatInput(value) => {
-                ConsoleService::log(&format!("Lat input {}", value));
-                if let Ok(lat) = value.parse() {
-                    self.reverse_lat = Some(lat);
-                } else {
-                    ConsoleService::log(&format!("Lat invalid input {}", value));
+                _ => {
+                    log::error!("Invalid lat/lng values");
                 }
-                false
-            }
-            Msg::ReverseLngInput(value) => {
-                ConsoleService::log(&format!("Lng input {}", value));
-                if let Ok(lng) = value.parse() {
-                    self.reverse_lng = Some(lng);
-                } else {
-                    ConsoleService::log(&format!("Lng invalid input {}", value));
-                }
-                false
-            }
-            Msg::ReverseFind => {
-                ConsoleService::log(&format!(
-                    "Reverse {:?} {:?}",
-                    self.reverse_lat, self.reverse_lng
-                ));
-                self.reverse_result = None;
-                self.suggest_items = None;
-                self.suggest_selected_item = None;
-                if let Err(e) = self.reverse() {
-                    ConsoleService::log(&format!("Error: {}", e));
-                }
-                true
-            }
-            Msg::ReverseResult(result) => {
-                self.loading = false;
-                self.reverse_result = result.items.into_iter().next();
-                true
-            }
-            Msg::MapDblClick(lat, lng) => {
-                self.reverse_lat = Some(lat);
-                self.reverse_lng = Some(lng);
-                self.link.send_message(Msg::ReverseFind);
-                true
-            }
-            Msg::MinScoreInput(value) => {
-                ConsoleService::log(&format!("MinScoreInput input {}", value));
-                self.min_score = value;
-                true
-            }
-            Msg::DistanceCoefficient(value) => {
-                ConsoleService::log(&format!("DistanceCoefficient input {}", value));
-                self.distance_coefficient = value;
-                true
-            }
+            };
+        });
+    });
 
-            _ => false,
-        }
-    }
+    // singal to accept coordinates from map events
+    let map_click_signal = create_rc_signal((String::new(), String::new()));
 
-    fn change(&mut self, _props: Self::Properties) -> ShouldRender {
-        false
-    }
+    // on map double click set new coordinates
+    let map_click_signal_clone = map_click_signal.clone();
+    let map_dblclick_closure = Closure::wrap(Box::new(move |lat: f64, lng: f64| {
+        log::info!("Map double-click on lat: {} lng: {}", lat, lng);
+        map_click_signal_clone.set((lat.to_string(), lng.to_string()));
+    }) as Box<dyn FnMut(f64, f64)>);
 
-    fn view(&self) -> Html {
-        let suggest_items = match &self.suggest_items {
-            Some(items) => {
-                if self.suggest_selected_item.is_some() {
-                    html! {}
-                } else {
-                    html! {
-                        <aside role="menu" class="absolute z-10 flex flex-col items-start w-64 bg-white border rounded-md shadow-md mt-1">
-                            <ul class="flex flex-col w-full">
-                            { items.iter().enumerate().map(|(index, item)| html! {
-                                <li onclick=self.link.callback(move |_| Msg::SuggestItemSelected(index)) class="px-2 py-3 space-x-2 hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white focus:outline-none ">{ &item.name } {" "} { &item.get_country() }</li>
-                            }).collect::<Html>()}
-                            </ul>
-                        </aside>
+    // and pass coordinates to manual inputs
+    let map_click_signal_clone = map_click_signal.clone();
+    let do_reverse_clone = do_reverse.clone();
+    create_effect(cx, move || {
+        let c = map_click_signal_clone.get();
+        reverse_lat.set(c.0.to_owned());
+        reverse_lng.set(c.1.to_owned());
+        do_reverse_clone();
+    });
+
+    // initialize map
+    spawn_local_scoped(cx, async move {
+        bindings::map_init(&map_dblclick_closure);
+        map_dblclick_closure.forget();
+    });
+
+    let handle_reverse = move |_| {
+        do_reverse();
+    };
+
+    view! { cx,
+        div(id="app") {
+            div(class="flex h-screen font-sans text-gray-900 bg-gray-300 border-box") {
+                div(class="flex flex-row w-full max-w lg:w-1/2 xl:w-1/4 justify-center align-top mb-auto mx-4") {
+                    div(class="flex flex-col items-start justify-between h-auto my-4 overflow-hidden bg-white rounded-lg shadow-xl") {
+                        div(class="flex flex-row items-baseline justify-around w-full p-1 pt-4 pb-0 mb-0") {
+                            h2(class="mr-auto text-lg font-semibold tracking-wide") { "Settings" }
+                        }
+                        div(class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400") {
+                            div(class="flex flex-col items-center justify-between py-1") {
+                                div(class="w-full mt-1") {
+                                    label(class="block text-gray-700 text-sm font-bold mb-2",for="min_score") {
+                                        "Suggest: Jaro Winkler min score"
+                                    }
+                                    div(class="mt-1 rounded-md shadow-sm") {
+                                        input(bind:value=min_score, id="min_score",type="number",min="0", max="1", class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline")
+                                    }
+                                }
+                                div(class="w-full mt-1") {
+                                    label(class="block text-gray-700 text-sm font-bold mb-2",for="distance_coefficient") {
+                                        "Reverse: Distance correction coefficient by population"
+                                    }
+                                    div(class="mt-1 rounded-md shadow-sm") {
+                                        input(bind:value=distance_coefficient, id="distance_coefficient", type="number", class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline")
+                                    }
+                                }
+                            }
+                        }
+                        div(class="flex flex-row items-baseline justify-around w-full p-1 pt-4 pb-0 mb-0") {
+                            h2(class="mr-auto text-lg font-semibold tracking-wide"){ "1. Suggest" }
+                        }
+                        div(class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400") {
+                            div(class="flex flex-row items-center justify-between py-1") {
+                                div(class="w-full") {
+                                    div(class="flex") {
+                                        div(class="w-5/6") {
+                                            div(class="mt-1 flex rounded-md shadow-sm") {
+                                                input(bind:value=suggest_input,type="text",placeholder="Please write a city name",class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline")
+                                            }
+                                        }
+                                        div(class="ml-1 mt-1 w-1/6 flex rounded-md shadow-sm") {
+                                            select(bind:value=language, class="bg-white w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline") {
+                                                option(value="en"){"en"}
+                                                option(value="ru"){"ru"}
+                                                option(value="uk"){"uk"}
+                                                option(value="be"){"be"}
+                                                option(value="zh"){"zh"}
+                                                option(value="ja"){"ja"}
+                                          }
+                                        }
+                                    }
+                                    SuggestItems {
+                                        text: suggest_input,
+                                        lang: language,
+                                        min_score: min_score,
+                                    }
+                                }
+                            }
+                        }
+                        div(class="flex flex-row items-baseline justify-around w-full p-1 pb-0 mb-0") {
+                            h2(class="mr-auto text-lg font-semibold tracking-wide"){"2. Reverse (dbl-click on map)"}
+                        }
+                        div(class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400") {
+                            div(class="flex flex-row items-center justify-between py-1") {
+                                div(class="mt-1 w-1/2 pr-1 flex rounded-md shadow-sm") {
+                                    // input(on:input=move |event: Event| handle_input("lat", event), value=reverse_lat, placeholder="Latitude", class="w-full px-3 py-1 border border-gray-400 rounded-lg outline-none focus:shadow-outline", type="text")
+                                    input(bind:value=reverse_lat, placeholder="Latitude", class="w-full px-3 py-1 border border-gray-400 rounded-lg outline-none focus:shadow-outline", type="text")
+                                }
+                                div(class="mt-1 w-1/2 flex rounded-md shadow-sm") {
+                                    input(bind:value=reverse_lng, placeholder="Longitude", class="w-full px-3 py-1 border border-gray-400 rounded-lg outline-none focus:shadow-outline", type="text")
+                                }
+                                div(class="mt-1 w-1/3 flex rounded-md shadow-sm") {
+                                    button(on:click=handle_reverse, class="w-full ml-1 px-3 py-1 border border-gray-400 rounded-lg outline-none"){"Find"}
+                                }
+                            }
+                        }
+
+                        ResultView { }
+
+                        div(class="flex w-full p-1 mb-1") {
+                            h4(class="font-semibold"){"API: "}
+                            a(class="mx-1 text-blue-500",href="./swagger"){"Swagger"}
+                            " / "
+                            a(class="mx-1 text-blue-500",href="./redoc"){"ReDoc"}
+                        }
+                        div(class="flex w-full p-1 mb-1") {
+                            h4(class="font-semibold"){"Github: "}
+                            a(class="mx-1 text-blue-500",href="https://github.com/estin/geosuggest"){"geosuggest"}
+                        }
                     }
                 }
+                div(id="map",class="flex-row hidden lg:block lg:w-1/2 xl:w-3/4") {}
             }
-            None => {
-                if self.loading {
-                    html! { {"Loading"} }
-                } else {
-                    html! {}
-                }
-            }
-        };
-
-        let result_node = match (
-            &self.reverse_result,
-            self.suggest_selected_item,
-            &self.suggest_items,
-        ) {
-            (Some(item), _, _) => {
-                let pretty =
-                    serde_json::to_string_pretty(&item).unwrap_or_else(|e| format!("Error: {}", e));
-                html! { <div class="w-full px-2 py-1 pb-4"><p class="font-semibold">{ "Reverse result:" }</p><code><pre>{ pretty }</pre></code></div> }
-            }
-            (None, Some(index), Some(items)) => {
-                let pretty = serde_json::to_string_pretty(&items[index])
-                    .unwrap_or_else(|e| format!("Error: {}", e));
-                html! { <div class="w-full px-2 py-1 pb-4"><p class="font-semibold">{ "Suggest result:" }</p><code><pre>{ pretty }</pre></code></div> }
-            }
-            _ => html! {},
-        };
-
-        let lat = self.reverse_lat.map(|v| format!("{:.5}", v));
-        let lng = self.reverse_lng.map(|v| format!("{:.5}", v));
-
-        html! {
-            <div id="app">
-                <div class="flex h-screen font-sans text-gray-900 bg-gray-300 border-box">
-                    <div class="flex flex-row w-full max-w lg:w-1/2 xl:w-1/4 justify-center align-top mb-auto mx-4">
-                        <div class="flex flex-col items-start justify-between h-auto my-4 overflow-hidden bg-white rounded-lg shadow-xl">
-                            <div class="flex flex-row items-baseline justify-around w-full p-1 pt-4 pb-0 mb-0">
-                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{ "Settings" }</h2>
-                            </div>
-                            <div class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400">
-                                <div class="flex flex-col items-center justify-between py-1">
-                                    <div class="w-full mt-1">
-                                        <label class="block text-gray-700 text-sm font-bold mb-2" for="min_score">
-                                            {"Suggest: Jaro Winkler min score"}
-                                        </label>
-                                        <div class="mt-1 rounded-md shadow-sm">
-                                            <input id="min_score" value=self.min_score.clone() type="number" min="0" max="1" oninput=self.link.callback(|event: InputData| Msg::MinScoreInput(event.value)) class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
-                                        </div>
-                                    </div>
-                                    <div class="w-full mt-1">
-                                        <label class="block text-gray-700 text-sm font-bold mb-2" for="distance_coefficient">
-                                            {"Reverse: Distance correction coefficient by population"}
-                                        </label>
-                                        <div class="mt-1 rounded-md shadow-sm">
-                                            <input id="distance_coefficient" value=self.distance_coefficient.clone() type="number" oninput=self.link.callback(|event: InputData| Msg::DistanceCoefficient(event.value)) class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex flex-row items-baseline justify-around w-full p-1 pt-4 pb-0 mb-0">
-                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{ "1. Suggest" }</h2>
-                            </div>
-                            <div class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400">
-                                <div class="flex flex-row items-center justify-between py-1">
-                                    <div class="w-full">
-                                        <div class="flex">
-                                            <div class="w-5/6">
-                                                <div class="mt-1 flex rounded-md shadow-sm">
-                                                    <input oninput=self.link.callback(|event: InputData| Msg::SuggestInput(event.value)) type="text" placeholder="Please write a city name" class="w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" />
-                                                </div>
-                                            </div>
-                                            <div class="ml-1 mt-1 w-1/6 flex rounded-md shadow-sm">
-                                                <select onchange=self.link.callback(Msg::LanguageSelected) class="bg-white w-full px-3 py-2 border border-gray-400 rounded-lg outline-none focus:shadow-outline" name="whatever" id="frm-whatever">
-                                                    <option value="en">{"en"}</option>
-                                                    <option value="ru">{"ru"}</option>
-                                                    <option value="uk">{"uk"}</option>
-                                                    <option value="be">{"be"}</option>
-                                                    <option value="zh">{"zh"}</option>
-                                                    <option value="ja">{"ja"}</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        { suggest_items }
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex flex-row items-baseline justify-around w-full p-1 pb-0 mb-0">
-                                <h2 class="mr-auto text-lg font-semibold tracking-wide">{"2. Reverse (dbl-click on map)"}</h2>
-                            </div>
-                            <div class="w-full p-1 pt-0 text-gray-800 bg-gray-100 divide-y divide-gray-400">
-                                <div class="flex flex-row items-center justify-between py-1">
-                                    <div class="mt-1 w-1/2 pr-1 flex rounded-md shadow-sm">
-                                        <input oninput=self.link.callback(|event: InputData| Msg::ReverseLatInput(event.value)) value=lat placeholder="Latitude" class="w-full px-3 py-1 border border-gray-400 rounded-lg outline-none focus:shadow-outline" type="text" />
-                                    </div>
-                                    <div class="mt-1 w-1/2 flex rounded-md shadow-sm">
-                                        <input oninput=self.link.callback(|event: InputData| Msg::ReverseLngInput(event.value)) value=lng placeholder="Longitude" class="w-full px-3 py-1 border border-gray-400 rounded-lg outline-none focus:shadow-outline" type="text" />
-                                    </div>
-                                    <div class="mt-1 w-1/3 flex rounded-md shadow-sm">
-                                        <button onclick=self.link.callback(move |_| Msg::ReverseFind) class="w-full ml-1 px-3 py-1 border border-gray-400 rounded-lg outline-none">{"Find"}</button>
-                                    </div>
-                                </div>
-                            </div>
-                            { result_node }
-                            <div class="flex w-full p-1 mb-1">
-                                <h4 class="font-semibold">{"API: "}</h4>
-                                <a class="mx-1 text-blue-500" href="./swagger">{"Swagger"}</a>
-                                { " / " }
-                                <a class="mx-1 text-blue-500" href="./redoc">{"ReDoc"}</a>
-                            </div>
-                            <div class="flex w-full p-1 mb-1">
-                                <h4 class="font-semibold">{"Github: "}</h4>
-                                <a class="mx-1 text-blue-500" href="https://github.com/estin/geosuggest">{"geosuggest"}</a>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="map" class="flex-row hidden lg:block lg:w-1/2 xl:w-3/4"></div>
-                </div>
-            </div>
         }
     }
 }
 
 fn main() {
-    yew::start_app::<Model>();
+    console_error_panic_hook::set_once();
+    console_log::init_with_level(log::Level::Debug).unwrap();
+
+    sycamore::render(|cx| {
+        view! {cx,
+           App {}
+        }
+    });
 }

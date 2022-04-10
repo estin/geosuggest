@@ -6,13 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-yew = "0.18"
+# yew = "0.18"
 
-anyhow = "1.0"
-wasm-bindgen = "0.2.69"
+# anyhow = "1.0"
+web-sys = "0.3.56"
+wasm-bindgen = "0.2.79"
+wasm-bindgen-futures = "0.4.29"
+reqwasm = "0.5.0" 
 
-log = "0.4.6"
-wasm-logger = "0.2.0"
+sycamore = {git = "https://github.com/sycamore-rs/sycamore", rev = "aac8b3a86ba3355edc172631ad418d373021479b", features = ["suspense"]}
+# sycamore_futures = {git = "https://github.com/sycamore-rs/sycamore", rev = "aac8b3a86ba3355edc172631ad418d373021479b"}
+console_error_panic_hook = "0.1.7"
+console_log = "0.2.0"
+log = "0.4.14"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
