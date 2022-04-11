@@ -3,23 +3,17 @@ name = "geosuggest-demo"
 version = "0.1.2"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-# yew = "0.18"
-
-# anyhow = "1.0"
 web-sys = "0.3.56"
 wasm-bindgen = "0.2.79"
-wasm-bindgen-futures = "0.4.29"
+# wasm-bindgen-futures = "0.4.29"
+sycamore = {git = "https://github.com/sycamore-rs/sycamore", rev = "e0f1d2299f2ae8a229f762803ea1c5068ad09fd2", features = ["suspense"]}
+
 reqwasm = "0.5.0" 
-
-sycamore = {git = "https://github.com/sycamore-rs/sycamore", rev = "aac8b3a86ba3355edc172631ad418d373021479b", features = ["suspense"]}
-# sycamore_futures = {git = "https://github.com/sycamore-rs/sycamore", rev = "aac8b3a86ba3355edc172631ad418d373021479b"}
-console_error_panic_hook = "0.1.7"
-console_log = "0.2.0"
-log = "0.4.14"
-
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_qs = "0.8"
+
+console_error_panic_hook = "0.1.7"
+console_log = "0.2.0"
+log = "0.4.14"

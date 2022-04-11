@@ -98,6 +98,23 @@ pub struct ReverseResult {
     time: usize,
 }
 
+enum RequestError {
+    SerializeRequestError(serde_qs::Error),
+    FetchError(reqwasm::Error),
+}
+
+impl From<serde_qs::Error> for RequestError {
+    fn from(e: serde_qs::Error) -> Self {
+        RequestError::SerializeRequestError(e)
+    }
+}
+
+impl From<reqwasm::Error> for RequestError {
+    fn from(e: reqwasm::Error) -> Self {
+        RequestError::FetchError(e)
+    }
+}
+
 fn get_api_url(method: &str) -> String {
     format!(
         "{}{}",
@@ -106,13 +123,13 @@ fn get_api_url(method: &str) -> String {
     )
 }
 
-async fn fetch_suggest<'a>(query: SuggestQuery<'a>) -> Result<SuggestResult, reqwasm::Error> {
+async fn fetch_suggest<'a>(query: SuggestQuery<'a>) -> Result<SuggestResult, RequestError> {
     if query.pattern.is_empty() {
         return Ok(SuggestResult::new());
     }
     let url = get_api_url(&format!(
         "/api/city/suggest?{}",
-        serde_qs::to_string(&query).unwrap(),
+        serde_qs::to_string(&query)?,
     ));
     let resp = Request::get(&url).send().await?;
 
@@ -120,11 +137,10 @@ async fn fetch_suggest<'a>(query: SuggestQuery<'a>) -> Result<SuggestResult, req
     Ok(body)
 }
 
-async fn fetch_reverse<'a>(query: ReverseQuery<'a>) -> Result<ReverseResult, reqwasm::Error> {
+async fn fetch_reverse<'a>(query: ReverseQuery<'a>) -> Result<ReverseResult, RequestError> {
     let url = get_api_url(&format!(
         "/api/city/reverse?{}",
         serde_qs::to_string(&query).unwrap(),
-        // serde_qs::to_string(&query).map_err(|e| { reqwasm::Error::SerdeError(e.to_string()) })?,
     ));
     let resp = Request::get(&url).send().await?;
 
