@@ -23,6 +23,7 @@ fn app_config(cfg: &mut ServiceConfig) {
     let engine = Arc::new(engine);
     cfg.state(engine).service((
         web::resource("/get").to(super::city_get),
+        web::resource("/capital").to(super::capital),
         web::resource("/suggest").to(super::suggest),
         web::resource("/reverse").to(super::reverse),
         #[cfg(feature = "geoip2_support")]
@@ -46,6 +47,28 @@ async fn api_get() -> Result<(), Error> {
     assert!(!city.is_none());
     let city = city.unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Voronezh");
+
+    Ok(())
+}
+
+#[ntex::test]
+async fn api_capital() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/capital?country_code=RU")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let city = result.get("city");
+    assert!(!city.is_none());
+    let city = city.unwrap();
+    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Moscow");
 
     Ok(())
 }

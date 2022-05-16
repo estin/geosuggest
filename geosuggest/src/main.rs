@@ -35,6 +35,14 @@ pub struct GetCityQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetCapitalQuery {
+    /// geonameid of the City
+    country_code: String,
+    /// isolanguage code
+    lang: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SuggestQuery {
     pattern: String,
     limit: Option<usize>,
@@ -70,6 +78,13 @@ pub struct GeoIP2Query {
 
 #[derive(Serialize, JsonSchema)]
 pub struct GetCityResult<'a> {
+    city: Option<CityResultItem<'a>>,
+    /// elapsed time in ms
+    time: usize,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct GetCapitalResult<'a> {
     city: Option<CityResultItem<'a>>,
     /// elapsed time in ms
     time: usize,
@@ -196,6 +211,23 @@ pub async fn city_get(
     })
 }
 
+pub async fn capital(
+    engine: web::types::State<Arc<Engine>>,
+    web::types::Query(query): web::types::Query<GetCapitalQuery>,
+    _req: HttpRequest,
+) -> HttpResponse {
+    let now = Instant::now();
+
+    let city = engine
+        .capital(&query.country_code)
+        .map(|city| CityResultItem::from_city(city, query.lang.as_deref()));
+
+    HttpResponse::Ok().json(&GetCapitalResult {
+        time: now.elapsed().as_millis() as usize,
+        city,
+    })
+}
+
 pub async fn suggest(
     engine: web::types::State<Arc<Engine>>,
     web::types::Query(query): web::types::Query<SuggestQuery>,
@@ -313,9 +345,11 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
         .substitute("version", VERSION)
         .substitute("url_path_prefix", &settings.url_path_prefix)
         .query_params::<GetCityQuery>("GetCityQuery")?
+        .query_params::<GetCapitalQuery>("GetCapitalQuery")?
         .query_params::<SuggestQuery>("SuggestQuery")?
         .query_params::<ReverseQuery>("ReverseQuery")?
         .schema::<GetCityResult>("GetCityResult")?
+        .schema::<GetCapitalResult>("GetCapitalResult")?
         .schema::<SuggestResult>("SuggestResult")?
         .schema::<ReverseResult>("ReverseResult")?;
 
@@ -399,6 +433,7 @@ async fn main() -> std::io::Result<()> {
                     .service((
                         // api
                         web::resource("/api/city/get").to(city_get),
+                        web::resource("/api/city/capital").to(capital),
                         web::resource("/api/city/suggest").to(suggest),
                         web::resource("/api/city/reverse").to(reverse),
                         #[cfg(feature = "geoip2_support")]

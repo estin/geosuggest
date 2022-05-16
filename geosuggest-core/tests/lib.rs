@@ -54,6 +54,18 @@ fn reverse() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn capital() -> Result<(), Box<dyn Error>> {
+    init();
+    let engine = get_engine(None, None, None)?;
+    let result = engine.capital("RU");
+    assert!(result.is_some());
+    let city = result.unwrap();
+    assert_eq!(city.name, "Moscow");
+    assert_eq!(city.country.as_ref().unwrap().name, "Russia");
+    Ok(())
+}
+
+#[test]
 #[cfg(feature = "geoip2_support")]
 fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
     init();

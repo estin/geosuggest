@@ -168,6 +168,7 @@ pub struct ReverseItem<'a> {
 struct EngineDump {
     entries: Vec<(usize, String)>,
     geonames: HashMap<usize, CitiesRecord>,
+    capitals: HashMap<String, usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,6 +181,7 @@ pub struct KdTreeEntry {
 pub struct Engine {
     entries: Vec<(usize, String)>,
     geonames: HashMap<usize, CitiesRecord>,
+    capitals: HashMap<String, usize>,
 
     #[serde(skip_serializing)]
     tree: KdTree<f64, KdTreeEntry, [f64; 2]>,
@@ -192,6 +194,14 @@ pub struct Engine {
 impl Engine {
     pub fn get(&self, id: &usize) -> Option<&CitiesRecord> {
         self.geonames.get(id)
+    }
+
+    pub fn capital(&self, country_code: &str) -> Option<&CitiesRecord> {
+        if let Some(city_id) = self.capitals.get(&country_code.to_lowercase()) {
+            self.get(city_id)
+        } else {
+            None
+        }
     }
 
     pub fn suggest(
@@ -345,6 +355,7 @@ impl Engine {
 
         let mut entries: Vec<(usize, String)> = Vec::new();
         let mut geonames: HashMap<usize, CitiesRecord> = HashMap::new();
+        let mut capitals: HashMap<String, usize> = HashMap::new();
 
         let records = split_content_to_n_parts(
             &std::fs::read_to_string(cities)?,
@@ -606,8 +617,9 @@ impl Engine {
             // PPLW	destroyed populated place	a village, town or city destroyed by a natural disaster, or by war
             // PPLX	section of populated place
             // STLMT israeli settlement
-            //
-            match record.feature_code.as_str() {
+
+            let feature_code = record.feature_code.as_str();
+            match feature_code {
                 "PPLA3" | "PPLA4" | "PPLA5" | "PPLF" | "PPLL" | "PPLQ" | "PPLW" | "PPLX"
                 | "STLMT" => continue,
                 _ => {}
@@ -640,6 +652,12 @@ impl Engine {
             }
 
             let country = if let Some(ref c) = country_by_code {
+                if feature_code == "PPLC" {
+                    capitals.insert(
+                        record.country_code.to_lowercase().to_string(),
+                        record.geonameid,
+                    );
+                }
                 c.get(&record.country_code).cloned()
             } else {
                 None
@@ -693,6 +711,7 @@ impl Engine {
 
         let engine = Engine {
             geonames,
+            capitals,
             tree,
             entries,
             #[cfg(feature = "geoip2_support")]
@@ -700,9 +719,10 @@ impl Engine {
         };
 
         log::info!(
-            "Engine ready (entries {}, geonames {}). took {}ms",
+            "Engine ready (entries {}, geonames {}, capitals {}). took {}ms",
             engine.entries.len(),
             engine.geonames.len(),
+            engine.capitals.len(),
             now.elapsed().as_millis()
         );
         Ok(engine)
@@ -755,6 +775,7 @@ impl Engine {
         let engine = Engine {
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
+            capitals: engine_dump.capitals,
             tree,
             #[cfg(feature = "geoip2_support")]
             geoip2_reader: None,

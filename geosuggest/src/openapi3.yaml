@@ -18,6 +18,19 @@ paths:
             application/json:
               schema:
                 {{GetCityResult}}
+  /api/city/capital:
+    get:
+      tags:
+      - capital
+      description: retrieve country capital 
+      parameters:
+        {{GetCapitalQuery}}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                {{GetCapitalResult}}
   /api/city/suggest:
     get:
       tags:
