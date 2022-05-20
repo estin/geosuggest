@@ -49,14 +49,14 @@ $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- \
     -a /tmp/admin1CodesASCII.txt \
     -l ru,uk,be,zh,ja \
     --countries geosuggest-core/tests/misc/country-info.txt \
-    -o /tmp/geosuggest-index.json
+    -o /tmp/geosuggest-index.bincode
 ```
 
 Run
 
 ```bash
 $ RUST_LOG=geosuggest=trace \
-    GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.json \
+    GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.bincode \
     GEOSUGGEST__HOST=127.0.0.1 \
     GEOSUGGEST__PORT=8080 \
     GEOSUGGEST__URL_PATH_PREFIX="/" \
