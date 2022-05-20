@@ -171,6 +171,18 @@ struct EngineDump {
     capitals: HashMap<String, usize>,
 }
 
+#[derive(Debug)]
+pub enum EngineDumpFormat {
+    Json,
+    Bincode,
+}
+
+impl Default for EngineDumpFormat {
+    fn default() -> Self {
+        EngineDumpFormat::Bincode
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct KdTreeEntry {
     pub geonameid: usize,
@@ -728,18 +740,29 @@ impl Engine {
         Ok(engine)
     }
 
-    pub fn dump_to_json<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+    pub fn dump_to<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+        format: EngineDumpFormat,
+    ) -> std::io::Result<()> {
         let now = Instant::now();
         let file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(&path)?;
-        serde_json::to_writer(file, self)?;
+
+        match format {
+            EngineDumpFormat::Json => serde_json::to_writer(file, self)?,
+            EngineDumpFormat::Bincode => bincode::serialize_into(file, &self).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::Other, format!("bincode: {}", e))
+            })?,
+        };
 
         let metadata = std::fs::metadata(&path)?;
         log::info!(
-            "Engine dump size: {} bytes. took {}ms",
+            "Engine dump [{:?}] size: {} bytes. took {}ms",
+            format,
             metadata.len(),
             now.elapsed().as_millis(),
         );
@@ -747,10 +770,11 @@ impl Engine {
         Ok(())
     }
 
-    pub fn load_from_json<P: AsRef<std::path::Path>>(
+    pub fn load_from<P: AsRef<std::path::Path>>(
         path: P,
+        format: EngineDumpFormat,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        log::info!("Engine starts load index from file...");
+        log::info!("Engine starts load index from file [{:?}]...", format);
 
         let now = Instant::now();
         let file = std::fs::OpenOptions::new()
@@ -759,7 +783,10 @@ impl Engine {
             .truncate(false)
             .open(&path)?;
 
-        let engine_dump: EngineDump = serde_json::from_reader(file)?;
+        let engine_dump: EngineDump = match format {
+            EngineDumpFormat::Json => serde_json::from_reader(file)?,
+            EngineDumpFormat::Bincode => bincode::deserialize_from(file)?,
+        };
 
         let mut tree = KdTree::with_capacity(2, engine_dump.geonames.len());
         for (geonameid, record) in &engine_dump.geonames {

@@ -1,7 +1,7 @@
 use getopts::Options;
 use std::env;
 
-use geosuggest_core::{Engine, SourceFileOptions};
+use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -99,7 +99,7 @@ fn main() -> std::io::Result<()> {
             &cities_file, &names_file, e
         )
     });
-    engine.dump_to_json(&index_file)?;
+    engine.dump_to(&index_file, EngineDumpFormat::default())?;
 
     println!("Done. Index file: {}", &index_file);
 

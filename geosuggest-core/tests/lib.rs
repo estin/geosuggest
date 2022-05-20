@@ -1,4 +1,4 @@
-use geosuggest_core::{Engine, SourceFileOptions};
+use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
@@ -120,10 +120,16 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
     let engine = get_engine(None, None, None)?;
 
     // dump
-    engine.dump_to_json(temp_dir().join("test-engine.json"))?;
+    engine.dump_to(
+        temp_dir().join("test-engine.json"),
+        EngineDumpFormat::default(),
+    )?;
 
     // load
-    let from_dump = Engine::load_from_json(temp_dir().join("test-engine.json"))?;
+    let from_dump = Engine::load_from(
+        temp_dir().join("test-engine.json"),
+        EngineDumpFormat::default(),
+    )?;
 
     assert_eq!(
         engine.suggest("voronezh", 100, None).len(),
