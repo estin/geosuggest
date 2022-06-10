@@ -225,9 +225,46 @@ impl Engine {
         if limit == 0 {
             return Vec::new();
         }
-        self.search(&pattern.to_lowercase(), limit, min_score)
+
+        let min_score = min_score.unwrap_or(0.8);
+        // search on whole index
+        let mut result = self
+            .entries
+            .par_iter()
+            .filter_map(|item| {
+                let score = jaro_winkler(&item.1, pattern);
+                if score > min_score {
+                    if let Some(city) = self.geonames.get(&item.0) {
+                        Some((city, score))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(&CitiesRecord, f64)>>();
+
+        result.dedup_by(|a, b| a.0.id == b.0.id);
+
+        // sort by score desc, population desc
+        result.sort_by(|lhs, rhs| {
+            if lhs.1 == rhs.1 {
+                rhs.0
+                    .population
+                    .partial_cmp(&lhs.0.population)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                rhs.1
+                    .partial_cmp(&lhs.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }
+        });
+
+        result
             .iter()
-            .filter_map(|item| self.geonames.get(item))
+            .take(limit)
+            .map(|item| item.0)
             .collect::<Vec<&CitiesRecord>>()
     }
 
@@ -310,48 +347,6 @@ impl Engine {
                     .collect(),
             )
         }
-    }
-
-    fn search(&self, pattern: &str, limit: usize, min_score: Option<f64>) -> Vec<usize> {
-        let min_score = min_score.unwrap_or(0.8);
-        // search on whole index
-        let mut result = self
-            .entries
-            .par_iter()
-            .filter_map(|item| {
-                let score = jaro_winkler(&item.1, pattern);
-                if score > min_score {
-                    Some((item.0, score))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<(usize, f64)>>();
-
-        // sort by score
-        result.sort_by(|lhs, rhs| {
-            rhs.1
-                .partial_cmp(&lhs.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        // collect result
-        let mut items: Vec<usize> = Vec::with_capacity(limit);
-        let mut set: HashSet<usize> = HashSet::new();
-        let mut count: usize = 0;
-        for item in result {
-            // exclude dublicates
-            if set.contains(&item.0) {
-                continue;
-            }
-            set.insert(item.0);
-            items.push(item.0);
-            count += 1;
-            if count >= limit {
-                break;
-            }
-        }
-        items
     }
 
     pub fn new_from_files<P: AsRef<std::path::Path>>(
