@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::time::Instant;
 
+use itertools::Itertools;
 use kdtree::{distance::squared_euclidean, KdTree};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -227,12 +228,17 @@ impl Engine {
         }
 
         let min_score = min_score.unwrap_or(0.8);
+        let normalized_pattern = pattern.to_lowercase();
         // search on whole index
         let mut result = self
             .entries
             .par_iter()
             .filter_map(|item| {
-                let score = jaro_winkler(&item.1, pattern);
+                let score = if item.1.starts_with(&normalized_pattern) {
+                    1.0
+                } else {
+                    jaro_winkler(&item.1, &normalized_pattern)
+                };
                 if score > min_score {
                     if let Some(city) = self.geonames.get(&item.0) {
                         Some((city, score))
@@ -244,8 +250,6 @@ impl Engine {
                 }
             })
             .collect::<Vec<(&CitiesRecord, f64)>>();
-
-        result.dedup_by(|a, b| a.0.id == b.0.id);
 
         // sort by score desc, population desc
         result.sort_by(|lhs, rhs| {
@@ -263,6 +267,7 @@ impl Engine {
 
         result
             .iter()
+            .unique_by(|item| item.0.id)
             .take(limit)
             .map(|item| item.0)
             .collect::<Vec<&CitiesRecord>>()
@@ -648,10 +653,7 @@ impl Engine {
             entries.push((record.geonameid, record.name.to_lowercase().to_owned()));
 
             if record.name != record.asciiname {
-                entries.push((
-                    record.geonameid,
-                    record.asciiname.to_ascii_lowercase().to_owned(),
-                ));
+                entries.push((record.geonameid, record.asciiname.to_lowercase().to_owned()));
             }
 
             for altname in record.alternatenames.split(',') {
