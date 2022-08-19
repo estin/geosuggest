@@ -3,7 +3,9 @@ use std::error::Error;
 use std::time::Instant;
 
 use itertools::Itertools;
-use kdtree::{distance::squared_euclidean, KdTree};
+
+use kiddo::{self, distance::squared_euclidean, KdTree};
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use strsim::jaro_winkler;
@@ -184,7 +186,7 @@ impl Default for EngineDumpFormat {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct KdTreeEntry {
     pub geonameid: usize,
     pub population: usize,
@@ -197,7 +199,7 @@ pub struct Engine {
     capitals: HashMap<String, usize>,
 
     #[serde(skip_serializing)]
-    tree: KdTree<f64, KdTreeEntry, [f64; 2]>,
+    tree: KdTree<f64, KdTreeEntry, 2>,
 
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
@@ -280,14 +282,9 @@ impl Engine {
         {
             Ok(nearest) => Some(nearest),
             Err(error) => match error {
-                kdtree::ErrorKind::WrongDimension => {
-                    log::error!(
-                        "Internal error, kdtree::ErrorKind::WrongDimension should never occur"
-                    );
-                    None
-                }
-                kdtree::ErrorKind::NonFiniteCoordinate => None,
-                kdtree::ErrorKind::ZeroCapacity => {
+                kiddo::ErrorKind::Empty => None,
+                kiddo::ErrorKind::NonFiniteCoordinate => None,
+                kiddo::ErrorKind::ZeroCapacity => {
                     log::error!(
                         "Internal error, kdtree::ErrorKind::ZeroCapacity should never occur"
                     );
@@ -607,7 +604,7 @@ impl Engine {
             None => None,
         };
 
-        let mut tree = KdTree::with_capacity(2, records.len());
+        let mut tree = KdTree::new();
 
         for record in records {
             // INCLUDE:
@@ -643,7 +640,7 @@ impl Engine {
             }
 
             tree.add(
-                [record.latitude, record.longitude],
+                &[record.latitude, record.longitude],
                 KdTreeEntry {
                     geonameid: record.geonameid,
                     population: record.population,
@@ -785,10 +782,10 @@ impl Engine {
             EngineDumpFormat::Bincode => bincode::deserialize_from(file)?,
         };
 
-        let mut tree = KdTree::with_capacity(2, engine_dump.geonames.len());
+        let mut tree = KdTree::new();
         for (geonameid, record) in &engine_dump.geonames {
             tree.add(
-                [record.latitude, record.longitude],
+                &[record.latitude, record.longitude],
                 KdTreeEntry {
                     population: record.population,
                     geonameid: *geonameid,

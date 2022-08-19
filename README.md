@@ -18,7 +18,7 @@ Main features:
 
 ### Based on:
  - [strsim](https://crates.io/crates/strsim)
- - [kdtree](https://crates.io/crates/kdtree)
+ - [kiddo](https://crates.io/crates/kiddo)
  - [geoip2](https://crates.io/crates/geoip2)
  - [ntex](https://crates.io/crates/ntex)
 
