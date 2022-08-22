@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use reqwasm;
 use reqwasm::http::Request;
 use sycamore::futures::{create_resource, spawn_local_scoped};
 use sycamore::prelude::*;
@@ -123,7 +122,7 @@ fn get_api_url(method: &str) -> String {
     )
 }
 
-async fn fetch_suggest<'a>(query: SuggestQuery<'a>) -> Result<SuggestResult, RequestError> {
+async fn fetch_suggest(query: SuggestQuery<'_>) -> Result<SuggestResult, RequestError> {
     if query.pattern.is_empty() {
         return Ok(SuggestResult::new());
     }
@@ -137,7 +136,7 @@ async fn fetch_suggest<'a>(query: SuggestQuery<'a>) -> Result<SuggestResult, Req
     Ok(body)
 }
 
-async fn fetch_reverse<'a>(query: ReverseQuery<'a>) -> Result<ReverseResult, RequestError> {
+async fn fetch_reverse(query: ReverseQuery<'_>) -> Result<ReverseResult, RequestError> {
     let url = get_api_url(&format!(
         "/api/city/reverse?{}",
         serde_qs::to_string(&query).unwrap(),
@@ -157,39 +156,39 @@ struct SuggestProps<'a> {
 
 #[component]
 async fn SuggestItems<'a, G: Html>(cx: Scope<'a>, props: SuggestProps<'a>) -> View<G> {
-    let show_suggest = create_signal(cx, true);
     let selected_item = use_context::<RcSignal<SelectedCity>>(cx);
 
-    create_effect(cx, || {
-        // subscriber to text change
-        let _ = props.text.get();
-
-        // show suggest on text changed
-        if !*show_suggest.get_untracked() {
-            show_suggest.set(true);
+    let show_suggest = create_selector(cx, move || {
+        let text = props.text.get();
+        if let Some(city) = &selected_item.get_untracked().city {
+            if city.name == text.as_str() {
+                return (false, text);
+            }
         }
+        (true, text)
     });
 
-    let handle_select = move |item| {
-        show_suggest.set(false);
+    let handle_select = move |item: CityResultItem| {
         selected_item.set(SelectedCity { city: Some(item) });
     };
 
     let view = create_memo(cx, move || {
-        if !*show_suggest.get() {
-            return view! {cx, };
-        }
-        if props.text.get().is_empty() {
+        let (show, text) = &*show_suggest.get();
+
+        if !show {
             return view! {cx, };
         }
 
-        let text = (*props.text.get()).clone();
+        if text.is_empty() {
+            return view! {cx, };
+        }
+
         let lang = (*props.lang.get()).clone();
         let min_score = (*props.min_score.get()).clone();
 
         let pattern = create_ref(cx, text.clone());
-        let lang = create_ref(cx, lang.clone());
-        let min_score = create_ref(cx, min_score.clone());
+        let lang = create_ref(cx, lang);
+        let min_score = create_ref(cx, min_score);
         let query = SuggestQuery {
             pattern,
             limit: Some(10),
@@ -238,7 +237,7 @@ async fn SuggestItems<'a, G: Html>(cx: Scope<'a>, props: SuggestProps<'a>) -> Vi
 }
 
 #[component]
-async fn ResultView<'a, G: Html>(cx: Scope<'a>) -> View<G> {
+async fn ResultView<G: Html>(cx: Scope<'_>) -> View<G> {
     let selected_item = use_context::<RcSignal<SelectedCity>>(cx);
     view! {cx,
         (match selected_item.get().city {
@@ -273,7 +272,16 @@ fn App<G: Html>(cx: Scope) -> View<G> {
     // result city
     let selected_item = create_rc_signal(SelectedCity { city: None });
     let selected_item_clone = selected_item.clone();
+    let selected_item_clone2 = selected_item.clone();
     provide_context(cx, selected_item);
+
+    // sync input and selected item
+    create_effect(cx, move || {
+        let selected = selected_item_clone2.get();
+        if let Some(city) = &selected.city {
+            suggest_input.set(city.name.clone());
+        }
+    });
 
     let do_reverse = Box::new(move || {
         let lat = (*reverse_lat.get_untracked()).clone();
@@ -326,10 +334,9 @@ fn App<G: Html>(cx: Scope) -> View<G> {
     }) as Box<dyn FnMut(f64, f64)>);
 
     // and pass coordinates to manual inputs
-    let map_click_signal_clone = map_click_signal.clone();
     let do_reverse_clone = do_reverse.clone();
     create_effect(cx, move || {
-        let c = map_click_signal_clone.get();
+        let c = map_click_signal.get();
         reverse_lat.set(c.0.to_owned());
         reverse_lng.set(c.1.to_owned());
         do_reverse_clone();
@@ -396,11 +403,11 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                                           }
                                         }
                                     }
-                                    SuggestItems {
-                                        text: suggest_input,
-                                        lang: language,
-                                        min_score: min_score,
-                                    }
+                                    SuggestItems(
+                                        text=suggest_input,
+                                        lang=language,
+                                        min_score=min_score,
+                                    )
                                 }
                             }
                         }
