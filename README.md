@@ -13,7 +13,7 @@ Main features:
  - find nearest city by coordinates
  - MaxMind GeoIP2(Lite) city database support
  - multilang (based on configured index options)
- - simple REST http api
+ - simple REST http [api](https://geosuggest.herokuapp.com/swagger)
  - no external services used
 
 ### Based on:

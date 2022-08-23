@@ -10,18 +10,23 @@ export function mapInit(callback) {
     }).addTo(window.map);
     window.map.doubleClickZoom.disable();
     
+    window.setMarker = function (lat, lng) {
+      if (window.marker) {
+          window.map.removeLayer(window.marker);
+      }
+      window.marker = new L.CircleMarker([lat, lng], 10).addTo(window.map);
+    };
+
     // event handler
     window.map.on('dblclick', function(event) {
-        if (window.marker) {
-            window.map.removeLayer(window.marker);
-        }
-        window.marker = new L.CircleMarker(event.latlng, 10).addTo(window.map);
+        window.setMarker(event.latlng.lat, event.latlng.lng);
         callback(event.latlng.lat, event.latlng.lng);
     });
 };
 
 export function mapMove(lat, lng) {
     if (window.map) {
+        window.setMarker(lat, lng);
         window.map.setView([lat, lng], 11, { animation: true });
     }
 };

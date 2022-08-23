@@ -169,6 +169,7 @@ async fn SuggestItems<'a, G: Html>(cx: Scope<'a>, props: SuggestProps<'a>) -> Vi
     });
 
     let handle_select = move |item: CityResultItem| {
+        bindings::map_move(item.latitude, item.longitude);
         selected_item.set(SelectedCity { city: Some(item) });
     };
 
