@@ -6,8 +6,7 @@ edition = "2021"
 [dependencies]
 web-sys = "0.3.56"
 wasm-bindgen = "0.2.79"
-# wasm-bindgen-futures = "0.4.29"
-sycamore = {git = "https://github.com/sycamore-rs/sycamore", rev = "2bb51c3b5a4cef21d4d1b0e6757096b3a2b5e08b", features = ["suspense"]}
+sycamore = { version = "0.8.1", features = ["suspense"]}
 
 reqwasm = "0.5.0" 
 serde = { version = "1.0", features = ["derive"] }
