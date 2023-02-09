@@ -18,11 +18,11 @@ tokio = ["ntex/tokio"]
 [dependencies]
 log = "0.4"
 env_logger = "0.8"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 
-ntex = { version = "0.5.18" }
-ntex-files = "0.1"
-ntex-cors = "0.2"
+ntex = { version = "0.6.3" }
+ntex-files = "0.2"
+ntex-cors = "0.3"
 config = "0.12"
 geosuggest-core = { path = "../geosuggest-core", features = ["oaph_support"] }
 
@@ -30,4 +30,4 @@ geosuggest-core = { path = "../geosuggest-core", features = ["oaph_support"] }
 oaph = "0.1"
 
 [dev-dependencies]
-serde_json = "1.0"
+serde_json = "1"

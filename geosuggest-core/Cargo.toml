@@ -11,7 +11,7 @@ geoip2_support = ["geoip2"]
 [dependencies]
 log = "0.4"
 csv = "1.1"
-serde = {version = "1.0", features = ["derive"] }
+serde = {version = "1", features = ["derive"] }
 rayon = "1.5"
 strsim = "0.10"
 kiddo = "0.2.4"
