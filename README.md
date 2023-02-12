@@ -4,7 +4,7 @@
   <p></p>
 </div>
 
-[Live demo](https://geosuggest.herokuapp.com/) with [sources](https://github.com/estin/geosuggest/tree/master/geosuggest-demo) on [Heroku](https://heroku.com) free quota (please be patient, it will take some time for the app to wake up)
+[Live demo](https://geosuggest.etatarkin.ru/) with [sources](https://github.com/estin/geosuggest/tree/master/geosuggest-demo)
 
 Main features:
  - library or service modes

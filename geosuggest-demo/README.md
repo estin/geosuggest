@@ -2,14 +2,12 @@
 
 This is a demonstrating how to use [geosuggest](https://github.com/estin/geosuggest).
 
-[Live demo](https://geosuggest.herokuapp.com/) on [Heroku](https://heroku.com) free quota:
-- Please be patient, it will take some time for the app to wake up
+[Live demo](https://geosuggest.etatarkin.ru/)
 
 In Dockerfile:
  - download and compile [geosuggest](https://github.com/estin/geosuggest) backend
  - build index on [geonames free data](http://download.geonames.org/export/dump/)
  - build [sycamore](https://github.com/sycamore-rs/sycamore) based frontend
-
 
 For local build&start
 ```bash
