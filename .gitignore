@@ -1,5 +1,4 @@
 .vim
 /target
-Cargo.lock
 examples/*/target
 **/dist
