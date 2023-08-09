@@ -5,10 +5,6 @@ use std::{env::temp_dir, error::Error};
 #[cfg(feature = "geoip2_support")]
 use std::{net::IpAddr, str::FromStr};
 
-fn init() {
-    let _ = env_logger::builder().is_test(true).try_init();
-}
-
 fn get_engine(
     cities: Option<&str>,
     names: Option<&str>,
@@ -23,9 +19,8 @@ fn get_engine(
     })
 }
 
-#[test]
+#[test_log::test]
 fn suggest() -> Result<(), Box<dyn Error>> {
-    init();
     let engine = get_engine(None, None, None)?;
     let items = engine.suggest("voronezh", 1, None);
     assert_eq!(items.len(), 1);
@@ -35,9 +30,8 @@ fn suggest() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
 fn reverse() -> Result<(), Box<dyn Error>> {
-    init();
     let engine = get_engine(None, None, None)?;
     let result = engine.reverse((51.6372, 39.1937), 1, None);
     assert!(result.is_some());
@@ -53,9 +47,8 @@ fn reverse() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
 fn capital() -> Result<(), Box<dyn Error>> {
-    init();
     let engine = get_engine(None, None, None)?;
     let result = engine.capital("RU");
     assert!(result.is_some());
@@ -65,10 +58,9 @@ fn capital() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
 #[cfg(feature = "geoip2_support")]
 fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
-    init();
     let mut engine = get_engine(None, None, None)?;
     engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
     let result = engine.geoip2_lookup(IpAddr::from_str("81.2.69.142")?);
@@ -79,10 +71,9 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
 #[cfg(feature = "geoip2_support")]
 fn geoip2_release_previous_buffer_and_reader() -> Result<(), Box<dyn Error>> {
-    init();
     let mut engine = get_engine(None, None, None)?;
 
     engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
@@ -100,7 +91,7 @@ fn geoip2_release_previous_buffer_and_reader() -> Result<(), Box<dyn Error>> {
     std::thread::sleep(std::time::Duration::from_millis(100));
     let memory_after = procinfo::pid::statm_self().unwrap().resident;
 
-    log::trace!(
+    tracing::trace!(
         "Memory before: {} after: {} diff: {}",
         memory_before,
         memory_after,
@@ -112,10 +103,8 @@ fn geoip2_release_previous_buffer_and_reader() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
 fn build_dump_load() -> Result<(), Box<dyn Error>> {
-    init();
-
     // build
     let engine = get_engine(None, None, None)?;
 
@@ -145,10 +134,8 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
 fn population_weight() -> Result<(), Box<dyn Error>> {
-    init();
-
     let engine = get_engine(Some("tests/misc/population-weight.txt"), None, None)?;
 
     let population_weight = 0.000000005;
@@ -167,7 +154,7 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     assert!(result.is_some());
     let items = result.unwrap();
     assert_eq!(items.len(), 3);
-    log::trace!("Reverse result: {:#?}", items);
+    tracing::trace!("Reverse result: {:#?}", items);
     assert_eq!(items[0].city.name, "Lyublino");
 
     // with weight coefficient
@@ -175,7 +162,7 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     assert!(result.is_some());
     let items = result.unwrap();
     assert_eq!(items.len(), 3);
-    log::trace!("Reverse result: {:#?}", items);
+    tracing::trace!("Reverse result: {:#?}", items);
     assert_eq!(items[0].city.name, "Moscow");
 
     // {
@@ -191,7 +178,7 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     let result = engine.reverse((55.67719, 37.89322), 5, Some(population_weight));
     assert!(result.is_some());
     let items = result.unwrap();
-    log::trace!("Reverse result: {:#?}", items);
+    tracing::trace!("Reverse result: {:#?}", items);
     assert_eq!(items.len(), 3);
     assert_eq!(items[0].city.name, "Lyubertsy");
 

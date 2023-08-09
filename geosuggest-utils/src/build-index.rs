@@ -1,5 +1,6 @@
 use getopts::Options;
 use std::env;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
 
@@ -9,8 +10,13 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() -> std::io::Result<()> {
-    std::env::set_var("RUST_LOG", "geosuggest_core=info");
-    env_logger::init();
+    // logging
+    let subscriber = tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer());
+    subscriber.init();
 
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();

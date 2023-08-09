@@ -1,6 +1,6 @@
 [package]
 name = "geosuggest"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 
 default-run = "geosuggest"
@@ -16,18 +16,19 @@ glommio = ["ntex/glommio"]
 tokio = ["ntex/tokio"]
 
 [dependencies]
-log = "0.4"
-env_logger = "0.8"
-serde = { version = "1", features = ["derive"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+ntex.workspace = true
+ntex-files.workspace = true
+ntex-cors.workspace = true
+config.workspace = true
 
-ntex = { version = "0.6.3" }
-ntex-files = "0.2"
-ntex-cors = "0.3"
-config = "0.12"
 geosuggest-core = { path = "../geosuggest-core", features = ["oaph_support"] }
 
 # openapi3
-oaph = "0.1"
+oaph.workspace = true 
 
 [dev-dependencies]
 serde_json = "1"
+test-log.workspace = true

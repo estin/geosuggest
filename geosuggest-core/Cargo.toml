@@ -1,6 +1,6 @@
 [package]
 name = "geosuggest-core"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 
 [features]
@@ -9,21 +9,20 @@ oaph_support = ["oaph"]
 geoip2_support = ["geoip2"]
 
 [dependencies]
-log = "0.4"
-csv = "1.1"
-serde = {version = "1", features = ["derive"] }
-rayon = "1.5"
-strsim = "0.10"
-kiddo = "0.2.4"
+tracing.workspace = true
+csv.workspace = true
+serde.workspace = true
+rayon.workspace = true
+strsim.workspace = true
+kiddo.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+itertools.workspace = true
 
-geoip2 = { version = "0.1.6", optional = true }
-oaph = {version = "0.1", optional = true }
-
-serde_json = "1.0"
-bincode = "1.3.3"
-
-itertools = "0.10.3"
+geoip2 = { workspace = true, optional = true}
+oaph = { workspace = true, optional = true }
 
 [dev-dependencies]
-env_logger = "0.8"
-procinfo = "0.4"
+procinfo.workspace = true
+test-log.workspace = true
+tracing-subscriber.workspace = true

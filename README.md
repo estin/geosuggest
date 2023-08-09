@@ -13,7 +13,7 @@ Main features:
  - find nearest city by coordinates
  - MaxMind GeoIP2(Lite) city database support
  - multilang (based on configured index options)
- - simple REST http [api](https://geosuggest.herokuapp.com/swagger)
+ - simple REST http [api](https://geosuggest.etatarkin.ru/swagger)
  - no external services used
 
 ### Based on:
@@ -55,8 +55,7 @@ $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- \
 Run
 
 ```bash
-$ RUST_LOG=geosuggest=trace \
-    GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.bincode \
+$ GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.bincode \
     GEOSUGGEST__HOST=127.0.0.1 \
     GEOSUGGEST__PORT=8080 \
     GEOSUGGEST__URL_PATH_PREFIX="/" \

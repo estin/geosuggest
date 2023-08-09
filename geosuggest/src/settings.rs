@@ -21,12 +21,12 @@ impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         let mut s = Config::builder();
 
-        log::info!("Try read config from: {}", CONFIG_FILE_PATH);
+        tracing::info!("Try read config from: {}", CONFIG_FILE_PATH);
         if Path::new(CONFIG_FILE_PATH).exists() {
             s = s.add_source(File::with_name(CONFIG_FILE_PATH).required(false))
         }
 
-        log::info!(
+        tracing::info!(
             "Try read and merge in config from file by environment variable: {}",
             CONFIG_FILE_ENV_PATH_KEY
         );
@@ -34,7 +34,7 @@ impl Settings {
             s = s.add_source(File::with_name(&config_path));
         };
 
-        log::info!(
+        tracing::info!(
             "Try read and merge in config from environment variables with prefix {}",
             CONFIG_PREFIX
         );

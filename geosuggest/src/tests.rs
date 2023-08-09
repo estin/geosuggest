@@ -1,6 +1,5 @@
 use geosuggest_core::{Engine, SourceFileOptions};
 use ntex::web::{test, App, Error, ServiceConfig};
-use ntex::Service;
 use ntex::{http, web};
 
 use std::sync::Arc;
@@ -44,7 +43,7 @@ async fn api_get() -> Result<(), Error> {
 
     let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
     let city = result.get("city");
-    assert!(!city.is_none());
+    assert!(city.is_some());
     let city = city.unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Voronezh");
 
@@ -66,7 +65,7 @@ async fn api_capital() -> Result<(), Error> {
 
     let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
     let city = result.get("city");
-    assert!(!city.is_none());
+    assert!(city.is_some());
     let city = city.unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Moscow");
 
@@ -88,7 +87,7 @@ async fn api_get_lang() -> Result<(), Error> {
 
     let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
     let city = result.get("city");
-    assert!(!city.is_none());
+    assert!(city.is_some());
     let city = city.unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Воронеж");
 
@@ -281,7 +280,7 @@ async fn api_reverse_lang() -> Result<(), Error> {
 }
 
 #[cfg(feature = "geoip2_support")]
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_geoip2_lang() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 

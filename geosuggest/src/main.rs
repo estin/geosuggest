@@ -1,6 +1,7 @@
 use std::boxed::Box;
 use std::sync::Arc;
 use std::time::Instant;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(feature = "geoip2_support")]
 use std::net::IpAddr;
@@ -22,7 +23,7 @@ use oaph::{
 
 mod settings;
 
-const DEFAULT_K: f64 = 0.000000005;
+const DEFAULT_K: f32 = 0.000000005;
 const DEFAULT_NEAREST_CITIES_LIMIT: usize = 10;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -49,19 +50,19 @@ pub struct SuggestQuery {
     /// isolanguage code
     lang: Option<String>,
     /// min score of Jaro Winkler similarity (by default 0.8)
-    min_score: Option<f64>,
+    min_score: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReverseQuery {
-    lat: f64,
-    lng: f64,
+    lat: f32,
+    lng: f32,
     limit: Option<usize>,
     /// isolanguage code
     lang: Option<String>,
     /// distance correction coefficient by city population `score(item) = item.distance - k * item.city.population`
     /// by default `0.000000005`
-    k: Option<f64>,
+    k: Option<f32>,
     /// neareset cities to apply distance correction coefficient by population
     /// by default 10
     nearest_limit: Option<usize>,
@@ -107,8 +108,8 @@ pub struct ReverseResult<'a> {
 #[derive(Serialize, JsonSchema)]
 pub struct ReverseResultItem<'a> {
     city: CityResultItem<'a>,
-    distance: f64,
-    score: f64,
+    distance: f32,
+    score: f32,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -132,8 +133,8 @@ pub struct CityResultItem<'a> {
     country: Option<CountryItem<'a>>,
     admin_division: Option<AdminDivisionItem<'a>>,
     timezone: &'a str,
-    latitude: f64,
-    longitude: f64,
+    latitude: f32,
+    longitude: f32,
     population: usize,
 }
 
@@ -361,7 +362,7 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
 
     aoph.render_to_file(include_str!("openapi3.yaml"), &openapi3_yaml_path)?;
 
-    log::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
+    tracing::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
 
     let title = format!("geosuggest v{}", VERSION);
 
@@ -389,10 +390,16 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
 
 #[ntex::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init();
+    // logging
+    let subscriber = tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        ))
+        .with(tracing_subscriber::fmt::layer());
+    subscriber.init();
 
     let settings = settings::Settings::new().expect("On read settings");
-    log::info!("Settings are:\n{:#?}", settings);
+    tracing::info!("Settings are:\n{:#?}", settings);
 
     // generate files for openapi3.yaml and swagger ui
     generate_openapi_files(&settings).expect("On generate openapi3 files");
@@ -417,7 +424,7 @@ async fn main() -> std::io::Result<()> {
     let settings_clone = settings.clone();
 
     let listen_on = format!("{}:{}", settings.host, settings.port);
-    log::info!("Listen on {}", listen_on);
+    tracing::info!("Listen on {}", listen_on);
 
     web::server(move || {
         let shared_engine = shared_engine_clone.clone();

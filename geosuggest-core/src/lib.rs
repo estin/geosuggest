@@ -4,7 +4,11 @@ use std::time::Instant;
 
 use itertools::Itertools;
 
-use kiddo::{self, distance::squared_euclidean, KdTree};
+// use kiddo::{self, distance::squared_euclidean, KdTree};
+use kiddo::{
+    self,
+    float::{distance::squared_euclidean, kdtree::KdTree},
+};
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -72,8 +76,8 @@ struct CitiesRecordRaw {
     name: String,
     asciiname: String,
     alternatenames: String,
-    latitude: f64,
-    longitude: f64,
+    latitude: f32,
+    longitude: f32,
     _feature_class: String,
     feature_code: String,
     country_code: String,
@@ -148,8 +152,8 @@ pub struct Country {
 pub struct CitiesRecord {
     pub id: usize,
     pub name: String,
-    pub latitude: f64,
-    pub longitude: f64,
+    pub latitude: f32,
+    pub longitude: f32,
     pub country: Option<Country>,
     pub admin_division: Option<AdminDivision>,
     pub timezone: String,
@@ -163,8 +167,8 @@ pub struct CitiesRecord {
 #[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
 pub struct ReverseItem<'a> {
     pub city: &'a CitiesRecord,
-    pub distance: f64,
-    pub score: f64,
+    pub distance: f32,
+    pub score: f32,
 }
 
 #[derive(Deserialize)]
@@ -175,22 +179,14 @@ struct EngineDump {
 }
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum EngineDumpFormat {
     Json,
+    #[default]
     Bincode,
 }
 
-impl Default for EngineDumpFormat {
-    fn default() -> Self {
-        EngineDumpFormat::Bincode
-    }
-}
 
-#[derive(Debug, Deserialize, PartialEq)]
-pub struct KdTreeEntry {
-    pub geonameid: usize,
-    pub population: usize,
-}
 
 #[derive(Serialize)]
 pub struct Engine {
@@ -199,7 +195,7 @@ pub struct Engine {
     capitals: HashMap<String, usize>,
 
     #[serde(skip_serializing)]
-    tree: KdTree<f64, KdTreeEntry, 2>,
+    tree: KdTree<f32, usize, 2, 32, u16>,
 
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
@@ -223,7 +219,7 @@ impl Engine {
         &self,
         pattern: &str,
         limit: usize,
-        min_score: Option<f64>,
+        min_score: Option<f32>,
     ) -> Vec<&CitiesRecord> {
         if limit == 0 {
             return Vec::new();
@@ -239,19 +235,15 @@ impl Engine {
                 let score = if item.1.starts_with(&normalized_pattern) {
                     1.0
                 } else {
-                    jaro_winkler(&item.1, &normalized_pattern)
+                    jaro_winkler(&item.1, &normalized_pattern) as f32
                 };
                 if score > min_score {
-                    if let Some(city) = self.geonames.get(&item.0) {
-                        Some((city, score))
-                    } else {
-                        None
-                    }
+                    self.geonames.get(&item.0).map(|city| (city, score))
                 } else {
                     None
                 }
             })
-            .collect::<Vec<(&CitiesRecord, f64)>>();
+            .collect::<Vec<(&CitiesRecord, f32)>>();
 
         // sort by score desc, population desc
         result.sort_by(|lhs, rhs| {
@@ -275,30 +267,11 @@ impl Engine {
             .collect::<Vec<&CitiesRecord>>()
     }
 
-    fn _nearest(&self, loc: (f64, f64), limit: usize) -> Option<Vec<(f64, &KdTreeEntry)>> {
-        match self
-            .tree
-            .nearest(&[loc.0, loc.1], limit, &squared_euclidean)
-        {
-            Ok(nearest) => Some(nearest),
-            Err(error) => match error {
-                kiddo::ErrorKind::Empty => None,
-                kiddo::ErrorKind::NonFiniteCoordinate => None,
-                kiddo::ErrorKind::ZeroCapacity => {
-                    log::error!(
-                        "Internal error, kdtree::ErrorKind::ZeroCapacity should never occur"
-                    );
-                    None
-                }
-            },
-        }
-    }
-
     pub fn reverse(
         &self,
-        loc: (f64, f64),
+        loc: (f32, f32),
         limit: usize,
-        k: Option<f64>,
+        k: Option<f32>,
     ) -> Option<Vec<ReverseItem>> {
         if limit == 0 {
             return None;
@@ -307,17 +280,19 @@ impl Engine {
         if k != 0.0 {
             // use population as point weight
             let mut points = self
+                .tree
                 // find N * 10 cities and sort them by score
-                ._nearest(loc, limit * 10)?
+                .nearest_n(&[loc.0, loc.1], limit, &squared_euclidean)
                 .iter()
-                .map(|item| {
-                    (
-                        item.0,
-                        item.0 - k * item.1.population as f64,
-                        item.1.geonameid,
-                    )
+                .filter_map(|nearest| {
+                    let city = self.geonames.get(&nearest.item)?;
+                    Some((
+                        nearest.distance,
+                        nearest.distance - k * city.population as f32,
+                        city,
+                    ))
                 })
-                .collect::<Vec<(f64, f64, usize)>>();
+                .collect::<Vec<(f32, f32, &CitiesRecord)>>();
 
             // points.sort_by_key(|i| i.0);
             points.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -330,20 +305,22 @@ impl Engine {
                         Some(ReverseItem {
                             distance: p.0,
                             score: p.1,
-                            city: self.geonames.get(&p.2)?,
+                            city: p.2,
                         })
                     })
                     .collect(),
             )
         } else {
             Some(
-                self._nearest(loc, limit)?
+                self.tree
+                    // find N * 10 cities and sort them by score
+                    .nearest_n(&[loc.0, loc.1], limit, &squared_euclidean)
                     .iter()
                     .filter_map(|p| {
                         Some(ReverseItem {
-                            distance: p.0,
-                            score: p.0,
-                            city: self.geonames.get(&p.1.geonameid)?,
+                            distance: p.distance,
+                            score: p.distance,
+                            city: self.geonames.get(&p.item)?,
                         })
                     })
                     .collect(),
@@ -378,7 +355,6 @@ impl Engine {
                 .from_reader(chunk.as_bytes());
 
             rdr.deserialize()
-                .into_iter()
                 .filter_map(|row| {
                     let record: CitiesRecordRaw = row.ok()?;
                     Some(record)
@@ -390,7 +366,7 @@ impl Engine {
             m1
         });
 
-        log::info!(
+        tracing::info!(
             "Engine read {} cities took {}ms",
             records.len(),
             now.elapsed().as_millis(),
@@ -409,7 +385,6 @@ impl Engine {
 
                 let countries = rdr
                     .deserialize()
-                    .into_iter()
                     .filter_map(|row| {
                         let record: CountryInfoRaw = row.ok()?;
                         Some((
@@ -423,7 +398,7 @@ impl Engine {
                     })
                     .collect::<HashMap<String, Country>>();
 
-                log::info!(
+                tracing::info!(
                     "Engine read {} countries took {}ms",
                     countries.len(),
                     now.elapsed().as_millis(),
@@ -447,7 +422,6 @@ impl Engine {
 
                 let admin_division = rdr
                     .deserialize()
-                    .into_iter()
                     .filter_map(|row| {
                         let record: Admin1CodeRecordRaw = row.ok()?;
                         Some((
@@ -461,7 +435,7 @@ impl Engine {
                     })
                     .collect::<HashMap<String, AdminDivision>>();
 
-                log::info!(
+                tracing::info!(
                     "Engine read {} admin codes took {}ms",
                     admin_division.len(),
                     now.elapsed().as_millis(),
@@ -593,7 +567,7 @@ impl Engine {
                         m1
                     });
 
-                log::info!(
+                tracing::info!(
                     "Engine read {} names took {}ms",
                     records.len(),
                     now.elapsed().as_millis(),
@@ -639,13 +613,7 @@ impl Engine {
                 continue;
             }
 
-            tree.add(
-                &[record.latitude, record.longitude],
-                KdTreeEntry {
-                    geonameid: record.geonameid,
-                    population: record.population,
-                },
-            )?;
+            tree.add(&[record.latitude, record.longitude], record.geonameid);
 
             entries.push((record.geonameid, record.name.to_lowercase().to_owned()));
 
@@ -724,7 +692,7 @@ impl Engine {
             geoip2_reader: None,
         };
 
-        log::info!(
+        tracing::info!(
             "Engine ready (entries {}, geonames {}, capitals {}). took {}ms",
             engine.entries.len(),
             engine.geonames.len(),
@@ -754,7 +722,7 @@ impl Engine {
         };
 
         let metadata = std::fs::metadata(&path)?;
-        log::info!(
+        tracing::info!(
             "Engine dump [{:?}] size: {} bytes. took {}ms",
             format,
             metadata.len(),
@@ -768,7 +736,7 @@ impl Engine {
         path: P,
         format: EngineDumpFormat,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        log::info!("Engine starts load index from file [{:?}]...", format);
+        tracing::info!("Engine starts load index from file [{:?}]...", format);
 
         let now = Instant::now();
         let file = std::fs::OpenOptions::new()
@@ -784,13 +752,7 @@ impl Engine {
 
         let mut tree = KdTree::new();
         for (geonameid, record) in &engine_dump.geonames {
-            tree.add(
-                &[record.latitude, record.longitude],
-                KdTreeEntry {
-                    population: record.population,
-                    geonameid: *geonameid,
-                },
-            )?
+            tree.add(&[record.latitude, record.longitude], *geonameid);
         }
 
         let engine = Engine {
@@ -802,7 +764,7 @@ impl Engine {
             geoip2_reader: None,
         };
 
-        log::info!(
+        tracing::info!(
             "Engine loaded from file. took {}ms",
             now.elapsed().as_millis(),
         );
@@ -847,7 +809,7 @@ impl Engine {
                 self.geonames.get(&id)
             }
             None => {
-                log::warn!("Geoip2 reader is't configured!");
+                tracing::warn!("Geoip2 reader is't configured!");
                 None
             }
         }

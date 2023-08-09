@@ -1,4 +1,4 @@
-FROM rust:1.67-slim
+FROM rust:1.71-slim-bookworm
 
 ARG GEOSUGGEST_BASE_API_URL=$GEOSUGGEST_BASE_API_URL
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
@@ -24,9 +24,12 @@ RUN cd /tmp \
     && unzip $CITIES.zip \
     && unzip alternateNamesV2.zip
 
+# fix Crimea
+RUN cat /tmp/$CITIES.txt | sed "s/UA\t\t11/RU\t\t192/p" > /tmp/fixed-$CITIES.txt 
+
 RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index \
-    -c /tmp/$CITIES.txt \
+    -c /tmp/fixed-$CITIES.txt \
     -n /tmp/alternateNamesV2.txt \
     -a /tmp/admin1CodesASCII.txt \
     -l ru,uk,be,zh,ja \
@@ -41,7 +44,7 @@ RUN cd /root/geosuggest-release/geosuggest-demo \
     && trunk build --release -d /root/geosuggest-demo-release
 
 # final stage
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 
 ARG PORT=$PORT
 ARG GEOSUGGEST_INDEX=geosuggest-index.bincode
