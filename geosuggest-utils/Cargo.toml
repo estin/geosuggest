@@ -3,6 +3,14 @@ name = "geosuggest-utils"
 version = "0.1.1"
 edition = "2021"
 
+[features]
+default = ["tokio"]
+tokio = ["ntex/tokio"]
+cli = ["clap"]
+
+[lib]
+path = "src/lib.rs"
+doctest = false
 
 [[bin]]
 name = "geosuggest-build-index"
@@ -13,7 +21,11 @@ path = "src/build-index.rs"
 [dependencies]
 tracing.workspace = true
 tracing-subscriber.workspace = true
+anyhow.workspace = true
+ntex.workspace = true
+zip.workspace = true
+reqwest.workspace = true
 
 geosuggest-core = { path = "../geosuggest-core" }
 
-getopts = "0.2"
+clap = { version = "4.3", optional = true, features=["derive"] }

@@ -35,21 +35,10 @@ $ cargo build --release
 Build index file
 
 ```bash
-# download raw data from geonames
-$ curl -sL http://download.geonames.org/export/dump/cities15000.zip --output /tmp/cities15000.zip \
-    && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output /tmp/alternateNamesV2.zip \
-    && curl -sL http://download.geonames.org/export/dump/admin1CodesASCII.txt --output /tmp/admin1CodesASCII.txt \
-    && unzip -d /tmp /tmp/cities15000.zip \
-    && unzip -d /tmp /tmp/alternateNamesV2.zip
-
-# build index
-$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release -- \
-    -c /tmp/cities15000.txt \
-    -n /tmp/alternateNamesV2.txt \
-    -a /tmp/admin1CodesASCII.txt \
-    -l ru,uk,be,zh,ja \
-    --countries geosuggest-core/tests/misc/country-info.txt \
-    -o /tmp/geosuggest-index.bincode
+$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --features=cli -- \
+    from-urls \
+    --languages=ru,uk,be,zh,ja \
+    --output=/tmp/geosuggest-index.bincode
 ```
 
 Run

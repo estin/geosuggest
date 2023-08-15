@@ -30,7 +30,7 @@ fn app_config(cfg: &mut ServiceConfig) {
     ));
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_get() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
@@ -50,7 +50,7 @@ async fn api_get() -> Result<(), Error> {
     Ok(())
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_capital() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
@@ -72,7 +72,7 @@ async fn api_capital() -> Result<(), Error> {
     Ok(())
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_get_lang() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
@@ -117,7 +117,7 @@ async fn api_get_lang() -> Result<(), Error> {
     Ok(())
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_suggest() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
@@ -138,7 +138,7 @@ async fn api_suggest() -> Result<(), Error> {
     Ok(())
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_suggest_lang() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
@@ -183,7 +183,7 @@ async fn api_suggest_lang() -> Result<(), Error> {
     Ok(())
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_reverse() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
@@ -215,7 +215,7 @@ async fn api_reverse() -> Result<(), Error> {
     Ok(())
 }
 
-#[ntex::test]
+#[test_log::test(ntex::test)]
 async fn api_reverse_lang() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 

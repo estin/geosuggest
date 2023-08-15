@@ -31,6 +31,14 @@ pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub filter_languages: Vec<&'a str>,
 }
 
+pub struct SourceFileContentOptions<'a> {
+    pub cities: String,
+    pub names: Option<String>,
+    pub countries: Option<String>,
+    pub admin1_codes: Option<String>,
+    pub filter_languages: Vec<&'a str>,
+}
+
 // code, name, name ascii, geonameid
 #[derive(Debug, Deserialize)]
 struct Admin1CodeRecordRaw {
@@ -95,8 +103,7 @@ struct CitiesRecordRaw {
 
 // CounntryInfo
 // http://download.geonames.org/export/dump/countryInfo.txt
-// iso alpha2      iso alpha3      iso numeric     fips code       name    capital areaInSqKm      population      continent       languages       currency        geonameId
-// RU      RUS     643     RS      Russia  Moscow  1.71E7  144478050       EU      ru,tt,xal,cau,ady,kv,ce,tyv,cv,udm,tut,mns,bua,myv,mdf,chm,ba,inh,tut,kbd,krc,av,sah,nog        RUB     2017370
+// ISO	ISO3	ISO-Numeric	fips	Country	Capital	Area(in sq km)	Population	Continent	tld	CurrencyCode	CurrencyName	Phone	Postal Code Format	Postal Code Regex	Languages	geonameid	neighbours	EquivalentFipsCode
 #[derive(Debug, Deserialize)]
 struct CountryInfoRaw {
     iso: String,
@@ -108,9 +115,16 @@ struct CountryInfoRaw {
     _area: String,
     _population: usize,
     _continent: String,
+    _tld: String,
+    _currency_code: String,
+    _currency_name: String,
+    _phone: String,
+    _postal_code_format: String,
+    _postal_code_regex: String,
     _languages: String,
-    _currency: String,
     geonameid: usize,
+    _neighbours: String,
+    _equivalent_fips_code: String,
 }
 
 // The table 'alternate names' :
@@ -178,15 +192,12 @@ struct EngineDump {
     capitals: HashMap<String, usize>,
 }
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum EngineDumpFormat {
     Json,
     #[default]
     Bincode,
 }
-
-
 
 #[derive(Serialize)]
 pub struct Engine {
@@ -200,6 +211,10 @@ pub struct Engine {
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
     geoip2_reader: Option<(&'static Vec<u8>, &'static Reader<'static, City<'static>>)>,
+}
+
+pub fn skip_comment_lines(content: String) -> String {
+    content.lines().filter(|l| !l.starts_with('#')).join("\n")
 }
 
 impl Engine {
@@ -301,12 +316,10 @@ impl Engine {
                 points
                     .iter()
                     .take(limit)
-                    .filter_map(|p| {
-                        Some(ReverseItem {
-                            distance: p.0,
-                            score: p.1,
-                            city: p.2,
-                        })
+                    .map(|p| ReverseItem {
+                        distance: p.0,
+                        score: p.1,
+                        city: p.2,
                     })
                     .collect(),
             )
@@ -337,34 +350,61 @@ impl Engine {
             admin1_codes,
         }: SourceFileOptions<P>,
     ) -> Result<Self, Box<dyn Error>> {
+        Engine::new_from_files_content(SourceFileContentOptions {
+            cities: std::fs::read_to_string(cities)?,
+            names: if let Some(p) = names {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
+            },
+            countries: if let Some(p) = countries {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
+            },
+            admin1_codes: if let Some(p) = admin1_codes {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
+            },
+            filter_languages,
+        })
+    }
+
+    pub fn new_from_files_content(
+        SourceFileContentOptions {
+            cities,
+            names,
+            countries,
+            filter_languages,
+            admin1_codes,
+        }: SourceFileContentOptions,
+    ) -> Result<Self, Box<dyn Error>> {
         let now = Instant::now();
 
         let mut entries: Vec<(usize, String)> = Vec::new();
         let mut geonames: HashMap<usize, CitiesRecord> = HashMap::new();
         let mut capitals: HashMap<String, usize> = HashMap::new();
 
-        let records = split_content_to_n_parts(
-            &std::fs::read_to_string(cities)?,
-            rayon::current_num_threads(),
-        )
-        .par_iter()
-        .map(|chunk| {
-            let mut rdr = csv::ReaderBuilder::new()
-                .has_headers(false)
-                .delimiter(b'\t')
-                .from_reader(chunk.as_bytes());
+        let records = split_content_to_n_parts(&cities, rayon::current_num_threads())
+            .par_iter()
+            .map(|chunk| {
+                let mut rdr = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .delimiter(b'\t')
+                    .from_reader(chunk.as_bytes());
 
-            rdr.deserialize()
-                .filter_map(|row| {
-                    let record: CitiesRecordRaw = row.ok()?;
-                    Some(record)
-                })
-                .collect::<Vec<CitiesRecordRaw>>()
-        })
-        .reduce(Vec::new, |mut m1, ref mut m2| {
-            m1.append(m2);
-            m1
-        });
+                rdr.deserialize()
+                    .filter_map(|row| {
+                        let record: CitiesRecordRaw = row.ok()?;
+                        Some(record)
+                    })
+                    .collect::<Vec<CitiesRecordRaw>>()
+            })
+            .reduce(Vec::new, |mut m1, ref mut m2| {
+                m1.append(m2);
+                m1
+            });
 
         tracing::info!(
             "Engine read {} cities took {}ms",
@@ -374,9 +414,10 @@ impl Engine {
 
         // load country info
         let country_by_code: Option<HashMap<String, Country>> = match countries {
-            Some(counties_path) => {
-                let contents = std::fs::read_to_string(counties_path)?;
+            Some(contents) => {
                 let now = Instant::now();
+
+                let contents = skip_comment_lines(contents);
 
                 let mut rdr = csv::ReaderBuilder::new()
                     .has_headers(false)
@@ -386,7 +427,12 @@ impl Engine {
                 let countries = rdr
                     .deserialize()
                     .filter_map(|row| {
-                        let record: CountryInfoRaw = row.ok()?;
+                        let record: CountryInfoRaw = row
+                            .map_err(|e| {
+                                tracing::error!("On read country row: {e}");
+                                e
+                            })
+                            .ok()?;
                         Some((
                             record.iso.clone(),
                             Country {
@@ -411,8 +457,7 @@ impl Engine {
 
         // load admin code info
         let admin1_by_code: Option<HashMap<String, AdminDivision>> = match admin1_codes {
-            Some(admin1_codes_path) => {
-                let contents = std::fs::read_to_string(admin1_codes_path)?;
+            Some(contents) => {
                 let now = Instant::now();
 
                 let mut rdr = csv::ReaderBuilder::new()
@@ -447,8 +492,7 @@ impl Engine {
         };
 
         let mut names_by_id: Option<HashMap<usize, HashMap<String, String>>> = match names {
-            Some(names_path) => {
-                let contents = std::fs::read_to_string(names_path)?;
+            Some(contents) => {
                 let now = Instant::now();
 
                 // collect ids for cities
