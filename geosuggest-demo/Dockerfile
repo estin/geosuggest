@@ -14,7 +14,7 @@ RUN cd /root \
     && unzip geosuggest-release.zip \
     && mv geosuggest-$GEOSUGGEST_RELEASE geosuggest-release \
     && cd geosuggest-release \
-    && cargo build --release --all-features
+    && cargo build --release --features=tokio,cli
 
 # index
 RUN cd /tmp \ 
