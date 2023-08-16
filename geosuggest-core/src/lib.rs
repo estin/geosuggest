@@ -187,6 +187,7 @@ pub struct ReverseItem<'a> {
 
 #[derive(Deserialize)]
 struct EngineDump {
+    source_etag: HashMap<String, String>,
     entries: Vec<(usize, String)>,
     geonames: HashMap<usize, CitiesRecord>,
     capitals: HashMap<String, usize>,
@@ -201,6 +202,7 @@ pub enum EngineDumpFormat {
 
 #[derive(Serialize)]
 pub struct Engine {
+    pub source_etag: HashMap<String, String>,
     entries: Vec<(usize, String)>,
     geonames: HashMap<usize, CitiesRecord>,
     capitals: HashMap<String, usize>,
@@ -349,26 +351,30 @@ impl Engine {
             filter_languages,
             admin1_codes,
         }: SourceFileOptions<P>,
+        source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
-        Engine::new_from_files_content(SourceFileContentOptions {
-            cities: std::fs::read_to_string(cities)?,
-            names: if let Some(p) = names {
-                Some(std::fs::read_to_string(p)?)
-            } else {
-                None
+        Engine::new_from_files_content(
+            SourceFileContentOptions {
+                cities: std::fs::read_to_string(cities)?,
+                names: if let Some(p) = names {
+                    Some(std::fs::read_to_string(p)?)
+                } else {
+                    None
+                },
+                countries: if let Some(p) = countries {
+                    Some(std::fs::read_to_string(p)?)
+                } else {
+                    None
+                },
+                admin1_codes: if let Some(p) = admin1_codes {
+                    Some(std::fs::read_to_string(p)?)
+                } else {
+                    None
+                },
+                filter_languages,
             },
-            countries: if let Some(p) = countries {
-                Some(std::fs::read_to_string(p)?)
-            } else {
-                None
-            },
-            admin1_codes: if let Some(p) = admin1_codes {
-                Some(std::fs::read_to_string(p)?)
-            } else {
-                None
-            },
-            filter_languages,
-        })
+            source_etag,
+        )
     }
 
     pub fn new_from_files_content(
@@ -379,6 +385,7 @@ impl Engine {
             filter_languages,
             admin1_codes,
         }: SourceFileContentOptions,
+        source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
         let now = Instant::now();
 
@@ -728,6 +735,7 @@ impl Engine {
         }
 
         let engine = Engine {
+            source_etag,
             geonames,
             capitals,
             tree,
@@ -800,6 +808,7 @@ impl Engine {
         }
 
         let engine = Engine {
+            source_etag: engine_dump.source_etag,
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
             capitals: engine_dump.capitals,

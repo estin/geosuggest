@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
@@ -99,17 +100,20 @@ async fn main() -> Result<()> {
         }
 
         Args::FromFiles(args) => {
-            let engine = Engine::new_from_files(SourceFileOptions {
-                cities: args.cities,
-                names: args.names,
-                countries: args.countries,
-                admin1_codes: args.admin_codes,
-                filter_languages: if let Some(languages) = &args.languages {
-                    languages.split(',').map(AsRef::as_ref).collect()
-                } else {
-                    Vec::new()
+            let engine = Engine::new_from_files(
+                SourceFileOptions {
+                    cities: args.cities,
+                    names: args.names,
+                    countries: args.countries,
+                    admin1_codes: args.admin_codes,
+                    filter_languages: if let Some(languages) = &args.languages {
+                        languages.split(',').map(AsRef::as_ref).collect()
+                    } else {
+                        Vec::new()
+                    },
                 },
-            })
+                HashMap::new(),
+            )
             .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
             engine.dump_to(&args.output, EngineDumpFormat::Bincode)?;

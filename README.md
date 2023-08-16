@@ -22,7 +22,17 @@ Main features:
  - [geoip2](https://crates.io/crates/geoip2)
  - [ntex](https://crates.io/crates/ntex)
 
-## Setup&Run
+
+## Library
+
+Crate usage [example](https://github.com/estin/geosuggest/tree/master/examples/src/simple.rs)
+
+```bash
+$ cargo run -p examples --release --bin simple
+```
+
+
+## Service
 
 Currently from sources only.
 
@@ -82,10 +92,10 @@ $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
 
 See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosuggest-demo/Dockerfile)
 
-Test
+## Test
 
 ```bash
-$ cargo test --all-features -- --test-threads=1
+$ cargo test --workspace --all-features -- --test-threads=1
 ```
 
 ## License

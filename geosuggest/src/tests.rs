@@ -1,17 +1,21 @@
 use geosuggest_core::{Engine, SourceFileOptions};
 use ntex::web::{test, App, Error, ServiceConfig};
 use ntex::{http, web};
+use std::collections::HashMap;
 
 use std::sync::Arc;
 
 fn app_config(cfg: &mut ServiceConfig) {
-    let mut engine = Engine::new_from_files(SourceFileOptions {
-        cities: "../geosuggest-core/tests/misc/cities-ru.txt",
-        names: Some("../geosuggest-core/tests/misc/names.txt"),
-        countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
-        filter_languages: vec!["ru"],
-        admin1_codes: Some("../geosuggest-core/tests/misc/admin1-codes.txt"),
-    })
+    let mut engine = Engine::new_from_files(
+        SourceFileOptions {
+            cities: "../geosuggest-core/tests/misc/cities-ru.txt",
+            names: Some("../geosuggest-core/tests/misc/names.txt"),
+            countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
+            filter_languages: vec!["ru"],
+            admin1_codes: Some("../geosuggest-core/tests/misc/admin1-codes.txt"),
+        },
+        HashMap::new(),
+    )
     .unwrap();
 
     #[cfg(feature = "geoip2_support")]

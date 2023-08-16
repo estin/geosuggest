@@ -2,7 +2,6 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
-
 use geosuggest_core::{Engine, SourceFileContentOptions};
 
 pub struct SourceItem<'a> {
@@ -54,7 +53,59 @@ impl<'a> IndexUpdater<'a> {
         })
     }
 
-    pub async fn fetch(&self, url: &str, filename: Option<&str>) -> Result<Vec<u8>> {
+    pub async fn has_updates(&self, engine: &Engine) -> Result<bool> {
+        tracing::info!("Check updates");
+        if engine.source_etag.is_empty() {
+            tracing::info!("Engine hasn't source ETAGs");
+            return Ok(true);
+        }
+
+        let mut requests = vec![self.get_etag(self.settings.cities.url)];
+        let mut results = vec!["cities"];
+        if let Some(item) = &self.settings.names {
+            requests.push(self.get_etag(item.url));
+            results.push("names");
+        }
+        if let Some(url) = self.settings.countries_url {
+            requests.push(self.get_etag(url));
+            results.push("countries");
+        }
+        if let Some(url) = self.settings.admin1_codes_url {
+            requests.push(self.get_etag(url));
+            results.push("admin1_codes");
+        }
+        let responses = ntex::util::join_all(requests).await;
+        let results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
+
+        for (entry, etag) in results.into_iter() {
+            let current_etag = engine
+                .source_etag
+                .get(entry)
+                .map(AsRef::as_ref)
+                .unwrap_or("");
+            let new_etag = etag?;
+            if current_etag != new_etag {
+                tracing::info!("New version of {entry}");
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    pub async fn get_etag(&self, url: &str) -> Result<String> {
+        let response = self.http_client.head(url).send().await?;
+        tracing::info!("Try HEAD {url}");
+
+        Ok(response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from)
+            .unwrap_or_default())
+    }
+
+    pub async fn fetch(&self, url: &str, filename: Option<&str>) -> Result<(String, Vec<u8>)> {
         let response = self.http_client.get(url).send().await?;
         tracing::info!("Try GET {url}");
 
@@ -62,19 +113,28 @@ impl<'a> IndexUpdater<'a> {
             anyhow::bail!("GET {url} return status {}", response.status())
         }
 
+        let etag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from)
+            .unwrap_or_default();
+
         let content = response.bytes().await?.to_vec();
         tracing::info!("Downloaded {url} size: {}", content.len());
 
-        if let Some(filename) = filename {
+        let content = if let Some(filename) = filename {
             let cursor = Cursor::new(content);
             let mut archive = zip::read::ZipArchive::new(cursor)?;
             let file = archive
                 .by_name(filename)
                 .map_err(|e| anyhow::anyhow!("On get file {filename} from archive: {e}"))?;
-            Ok(file.bytes().collect::<std::io::Result<Vec<_>>>()?)
+            file.bytes().collect::<std::io::Result<Vec<_>>>()?
         } else {
-            Ok(content)
-        }
+            content
+        };
+
+        Ok((etag, content))
     }
 
     pub async fn build(self) -> Result<Engine> {
@@ -89,6 +149,7 @@ impl<'a> IndexUpdater<'a> {
         }
         if let Some(url) = self.settings.countries_url {
             requests.push(self.fetch(url, None));
+            results.push("countries");
         }
         if let Some(url) = self.settings.admin1_codes_url {
             requests.push(self.fetch(url, None));
@@ -97,30 +158,46 @@ impl<'a> IndexUpdater<'a> {
         let responses = ntex::util::join_all(requests).await;
         let mut results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
-        Engine::new_from_files_content(SourceFileContentOptions {
-            cities: String::from_utf8(
-                results
-                    .remove(&"cities")
-                    .ok_or_else(|| anyhow::anyhow!("Cities file required"))?
-                    .map_err(|e| anyhow::anyhow!("On fetch cities file: {e}"))?, // .ok_or_else(|| anyhow::anyhow!("Cities file required"))?,
-            )?,
-            names: if let Some(c) = results.remove(&"names") {
-                Some(String::from_utf8(c?)?)
-            } else {
-                None
+        let source_etag = results
+            .iter()
+            .filter_map(|(k, v)| {
+                let Ok((etag, _)) = v else {
+                return None
+            };
+                Some((k.to_string(), etag.to_string()))
+            })
+            .collect();
+
+        tracing::info!("Try to build index...");
+
+        Engine::new_from_files_content(
+            SourceFileContentOptions {
+                cities: String::from_utf8(
+                    results
+                        .remove(&"cities")
+                        .ok_or_else(|| anyhow::anyhow!("Cities file required"))?
+                        .map_err(|e| anyhow::anyhow!("On fetch cities file: {e}"))?
+                        .1, // .ok_or_else(|| anyhow::anyhow!("Cities file required"))?,
+                )?,
+                names: if let Some(c) = results.remove(&"names") {
+                    Some(String::from_utf8(c?.1)?)
+                } else {
+                    None
+                },
+                countries: if let Some(c) = results.remove(&"countries") {
+                    Some(String::from_utf8(c?.1)?)
+                } else {
+                    None
+                },
+                admin1_codes: if let Some(c) = results.remove(&"admin1_codes") {
+                    Some(String::from_utf8(c?.1)?)
+                } else {
+                    None
+                },
+                filter_languages: self.settings.filter_languages,
             },
-            countries: if let Some(c) = results.remove(&"admin1_codes") {
-                Some(String::from_utf8(c?)?)
-            } else {
-                None
-            },
-            admin1_codes: if let Some(c) = results.remove(&"admin1_codes") {
-                Some(String::from_utf8(c?)?)
-            } else {
-                None
-            },
-            filter_languages: self.settings.filter_languages,
-        })
+            source_etag,
+        )
         .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))
     }
 }

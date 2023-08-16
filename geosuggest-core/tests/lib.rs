@@ -1,4 +1,5 @@
 use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
+use std::collections::HashMap;
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
@@ -10,13 +11,16 @@ fn get_engine(
     names: Option<&str>,
     countries: Option<&str>,
 ) -> Result<geosuggest_core::Engine, Box<dyn Error>> {
-    Engine::new_from_files(SourceFileOptions {
-        cities: cities.unwrap_or("tests/misc/cities-ru.txt"),
-        names: Some(names.unwrap_or("tests/misc/names.txt")),
-        countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
-        filter_languages: vec![],
-        admin1_codes: Some("tests/misc/admin1-codes.txt"),
-    })
+    Engine::new_from_files(
+        SourceFileOptions {
+            cities: cities.unwrap_or("tests/misc/cities-ru.txt"),
+            names: Some(names.unwrap_or("tests/misc/names.txt")),
+            countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
+            filter_languages: vec![],
+            admin1_codes: Some("tests/misc/admin1-codes.txt"),
+        },
+        HashMap::new(),
+    )
 }
 
 #[test_log::test]
