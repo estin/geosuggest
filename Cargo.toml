@@ -34,7 +34,6 @@ ntex-cors = "0.4"
 reqwest = "0.11"
 
 config = "0.13"
-procinfo = "0.4"
 
 [patch.crates-io]
 ntex-files = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "1270f0c" }
