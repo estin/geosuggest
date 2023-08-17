@@ -74,7 +74,7 @@ impl<'a> IndexUpdater<'a> {
             requests.push(self.get_etag(url));
             results.push("admin1_codes");
         }
-        let responses = ntex::util::join_all(requests).await;
+        let responses = futures::future::join_all(requests).await;
         let results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
         for (entry, etag) in results.into_iter() {
@@ -155,7 +155,7 @@ impl<'a> IndexUpdater<'a> {
             requests.push(self.fetch(url, None));
             results.push("admin1_codes");
         }
-        let responses = ntex::util::join_all(requests).await;
+        let responses = futures::future::join_all(requests).await;
         let mut results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
         let source_etag = results

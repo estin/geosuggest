@@ -64,7 +64,7 @@ struct Urls {
     output: String,
 }
 
-#[ntex::main]
+#[tokio::main]
 async fn main() -> Result<()> {
     // logging
     let subscriber = tracing_subscriber::registry()

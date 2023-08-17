@@ -95,7 +95,7 @@ See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosu
 ## Test
 
 ```bash
-$ cargo test --workspace --all-features -- --test-threads=1
+$ cargo test --workspace --all-features
 ```
 
 ## License

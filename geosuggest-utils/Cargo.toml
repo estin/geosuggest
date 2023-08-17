@@ -4,8 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [features]
-default = ["tokio"]
-tokio = ["ntex/tokio"]
+default = []
 cli = ["clap"]
 
 [lib]
@@ -22,9 +21,10 @@ path = "src/build-index.rs"
 tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
-ntex.workspace = true
 zip.workspace = true
 reqwest.workspace = true
+tokio.workspace = true
+futures.workspace = true
 
 geosuggest-core = { path = "../geosuggest-core" }
 
