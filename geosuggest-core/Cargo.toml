@@ -7,8 +7,7 @@ readme = "README.md"
 keywords = ["geocoding", "service"]
 repository = "https://github.com/estin/geosuggest.git"
 documentation = "https://docs.rs/geosuggest-core/"
-categories = ["web-programming::http-server",
-              "web-programming::websocket"]
+categories = ["web-programming::http-server"]
 license = "MIT"
 edition = "2021"
 
