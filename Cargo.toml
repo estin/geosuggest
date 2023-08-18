@@ -37,6 +37,7 @@ zip = "0.6"
 reqwest = "0.11"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 futures = "0.3"
+clap = { version = "4.3", features=["derive"] }
 
 [patch.crates-io]
 ntex-files = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "1270f0c" }

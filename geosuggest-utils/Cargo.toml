@@ -1,6 +1,15 @@
 [package]
 name = "geosuggest-utils"
-version = "0.1.1"
+version = "0.3.0"
+authors = ["geosuggest contributors"]
+description = "Suggest by name or find nearest by coordinates cities"
+readme = "README.md"
+keywords = ["geocoding", "service"]
+repository = "https://github.com/estin/geosuggest.git"
+documentation = "https://docs.rs/geosuggest-utils/"
+categories = ["web-programming::http-server",
+              "web-programming::websocket"]
+license = "MIT"
 edition = "2021"
 
 [features]
@@ -25,7 +34,6 @@ zip.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 futures.workspace = true
+clap = { workspace = true, optional = true }
 
-geosuggest-core = { path = "../geosuggest-core" }
-
-clap = { version = "4.3", optional = true, features=["derive"] }
+geosuggest-core = { path = "../geosuggest-core", version = "0.3" }

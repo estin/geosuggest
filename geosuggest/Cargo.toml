@@ -1,6 +1,15 @@
 [package]
 name = "geosuggest"
-version = "0.2.6"
+version = "0.3.0"
+authors = ["geosuggest contributors"]
+description = "Suggest by name or find nearest by coordinates cities"
+readme = "README.md"
+keywords = ["geocoding", "service"]
+repository = "https://github.com/estin/geosuggest.git"
+documentation = "https://docs.rs/geosuggest/"
+categories = ["web-programming::http-server",
+              "web-programming::websocket"]
+license = "MIT"
 edition = "2021"
 
 default-run = "geosuggest"
@@ -24,7 +33,7 @@ ntex-files.workspace = true
 ntex-cors.workspace = true
 config.workspace = true
 
-geosuggest-core = { path = "../geosuggest-core", features = ["oaph_support"] }
+geosuggest-core = { path = "../geosuggest-core", version = "0.3", features = ["oaph_support"] }
 
 # openapi3
 oaph.workspace = true 

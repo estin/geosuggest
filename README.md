@@ -34,7 +34,7 @@ $ cargo run -p examples --release --bin simple
 
 ## Service
 
-Currently from sources only.
+Install from sources (preferred).
 
 ```bash
 $ git clone https://github.com/estin/geosuggest.git
