@@ -39,7 +39,7 @@ struct Files {
     #[arg(short, long)]
     languages: Option<String>,
 
-    /// Dump index to
+    /// Dump index to file
     #[arg(short, long)]
     output: String,
 }
@@ -52,14 +52,31 @@ struct Urls {
     #[arg(short, long)]
     cities_url: Option<String>,
 
+    /// Citeis filename in archive
     #[arg(short, long)]
     cities_filename: Option<String>,
+
+    /// Names url
+    #[arg(short, long)]
+    names_url: Option<String>,
+
+    /// Names filename in archive
+    #[arg(short, long)]
+    names_filename: Option<String>,
+
+    /// Countries url
+    #[arg(short, long)]
+    countries_url: Option<String>,
+
+    /// Admin codes url
+    #[arg(short, long)]
+    admin_codes_url: Option<String>,
 
     /// Languages
     #[arg(short, long)]
     languages: Option<String>,
 
-    /// Dump index to
+    /// Dump index to file
     #[arg(short, long)]
     output: String,
 }
@@ -78,13 +95,30 @@ async fn main() -> Result<()> {
         Args::FromUrls(args) => {
             let mut settings = IndexUpdaterSettings::default();
 
-            if let Some(cities_url) = &args.cities_url {
+            if let Some(url) = &args.cities_url {
                 settings.cities = SourceItem {
-                    url: cities_url,
+                    url,
                     filename: args.cities_filename.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("Cities filename required to extract from archive")
                     })?,
                 };
+            }
+
+            if let Some(url) = &args.names_url {
+                settings.names = Some(SourceItem {
+                    url,
+                    filename: args.names_filename.as_ref().ok_or_else(|| {
+                        anyhow::anyhow!("Names filename required to extract from archive")
+                    })?,
+                });
+            }
+
+            if args.countries_url.is_some() {
+                settings.countries_url = args.countries_url.as_deref();
+            }
+
+            if args.admin_codes_url.is_some() {
+                settings.admin1_codes_url = args.admin_codes_url.as_deref();
             }
 
             if let Some(languages) = &args.languages {
