@@ -134,6 +134,7 @@ pub struct CityResultItem<'a> {
     name: &'a str,
     country: Option<CountryItem<'a>>,
     admin_division: Option<AdminDivisionItem<'a>>,
+    admin2_division: Option<AdminDivisionItem<'a>>,
     timezone: &'a str,
     latitude: f32,
     longitude: f32,
@@ -184,11 +185,26 @@ impl<'a> CityResultItem<'a> {
             None
         };
 
+        let admin2_division = if let Some(ref admin2) = item.admin2_division {
+            let admin2_name = match (lang, item.admin2_names.as_ref()) {
+                (Some(lang), Some(names)) => names.get(lang).unwrap_or(&admin2.name),
+                _ => &admin2.name,
+            };
+            Some(AdminDivisionItem {
+                id: admin2.id,
+                code: &admin2.code,
+                name: admin2_name,
+            })
+        } else {
+            None
+        };
+
         CityResultItem {
             id: item.id,
             name,
             country,
             admin_division,
+            admin2_division,
             timezone: &item.timezone,
             latitude: item.latitude,
             longitude: item.longitude,

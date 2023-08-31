@@ -15,6 +15,7 @@ pub struct IndexUpdaterSettings<'a> {
     pub names: Option<SourceItem<'a>>,
     pub countries_url: Option<&'a str>,
     pub admin1_codes_url: Option<&'a str>,
+    pub admin2_codes_url: Option<&'a str>,
     pub filter_languages: Vec<&'a str>,
 }
 
@@ -32,6 +33,7 @@ impl Default for IndexUpdaterSettings<'_> {
             }),
             countries_url: Some("http://download.geonames.org/export/dump/countryInfo.txt"),
             admin1_codes_url: Some("http://download.geonames.org/export/dump/admin1CodesASCII.txt"),
+            admin2_codes_url: Some("http://download.geonames.org/export/dump/admin2Codes.txt"),
             filter_languages: Vec::new(),
             // max_payload_size: 200 * 1024 * 1024,
         }
@@ -161,6 +163,10 @@ impl<'a> IndexUpdater<'a> {
             requests.push(self.fetch(url, None));
             results.push("admin1_codes");
         }
+        if let Some(url) = self.settings.admin2_codes_url {
+            requests.push(self.fetch(url, None));
+            results.push("admin2_codes");
+        }
         let responses = futures::future::join_all(requests).await;
         let mut results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
@@ -197,6 +203,11 @@ impl<'a> IndexUpdater<'a> {
                     None
                 },
                 admin1_codes: if let Some(c) = results.remove(&"admin1_codes") {
+                    Some(String::from_utf8(c?.1)?)
+                } else {
+                    None
+                },
+                admin2_codes: if let Some(c) = results.remove(&"admin2_codes") {
                     Some(String::from_utf8(c?.1)?)
                 } else {
                     None

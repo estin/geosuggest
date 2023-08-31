@@ -398,3 +398,4 @@
 11761722	472039	fr	Oblast de Voronej						
 12132450	472039	fi	Voronežin alue						
 13287630	472039	de	Woronesch		1				
+8184285	2650345	ru	Ист-Райдинг-оф-Йоркшир						

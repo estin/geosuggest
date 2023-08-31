@@ -13,6 +13,7 @@ fn app_config(cfg: &mut ServiceConfig) {
             countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
             filter_languages: vec!["ru"],
             admin1_codes: Some("../geosuggest-core/tests/misc/admin1-codes.txt"),
+            admin2_codes: Some("../geosuggest-core/tests/misc/admin2-codes.txt"),
         },
         HashMap::new(),
     )
@@ -300,6 +301,87 @@ async fn api_geoip2_lang() -> Result<(), Error> {
     let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
     let city = result.get("city").unwrap().as_object().unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Лондон");
+
+    Ok(())
+}
+
+#[test_log::test(ntex::test)]
+async fn api_suggest_admin2_lang() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/suggest?pattern=Beverley&lang=ru&limit=1")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let items = result.get("items").unwrap().as_array().unwrap();
+    assert!(!items.is_empty());
+    assert_eq!(items[0].get("name").unwrap().as_str().unwrap(), "Beverley");
+    assert_eq!(
+        items[0]
+            .get("admin2_division")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Ист-Райдинг-оф-Йоркшир"
+    );
+
+    Ok(())
+}
+
+#[test_log::test(ntex::test)]
+async fn api_reverse_admin2_lang() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/reverse?lat=53.84587&lng=-0.42332&lang=ru&limit=1")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let items = result.get("items").unwrap().as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0]
+            .get("city")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Beverley"
+    );
+    assert_eq!(
+        items[0]
+            .get("city")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("admin2_division")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("name")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Ист-Райдинг-оф-Йоркшир"
+    );
 
     Ok(())
 }

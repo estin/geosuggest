@@ -30,6 +30,7 @@ pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub names: Option<P>,
     pub countries: Option<P>,
     pub admin1_codes: Option<P>,
+    pub admin2_codes: Option<P>,
     pub filter_languages: Vec<&'a str>,
 }
 
@@ -38,12 +39,22 @@ pub struct SourceFileContentOptions<'a> {
     pub names: Option<String>,
     pub countries: Option<String>,
     pub admin1_codes: Option<String>,
+    pub admin2_codes: Option<String>,
     pub filter_languages: Vec<&'a str>,
 }
 
 // code, name, name ascii, geonameid
 #[derive(Debug, Deserialize)]
 struct Admin1CodeRecordRaw {
+    code: String,
+    name: String,
+    _asciiname: String,
+    geonameid: usize,
+}
+
+// code, name, name ascii, geonameid
+#[derive(Debug, Deserialize)]
+struct Admin2CodeRecordRaw {
     code: String,
     name: String,
     _asciiname: String,
@@ -93,7 +104,7 @@ struct CitiesRecordRaw {
     country_code: String,
     _cc2: String,
     admin1_code: String,
-    _admin2_code: String,
+    admin2_code: String,
     _admin3_code: String,
     _admin4_code: String,
     population: usize,
@@ -172,10 +183,12 @@ pub struct CitiesRecord {
     pub longitude: f32,
     pub country: Option<Country>,
     pub admin_division: Option<AdminDivision>,
+    pub admin2_division: Option<AdminDivision>,
     pub timezone: String,
     pub names: Option<HashMap<String, String>>,
     pub country_names: Option<HashMap<String, String>>,
     pub admin1_names: Option<HashMap<String, String>>,
+    pub admin2_names: Option<HashMap<String, String>>,
     pub population: usize,
 }
 
@@ -352,6 +365,7 @@ impl Engine {
             countries,
             filter_languages,
             admin1_codes,
+            admin2_codes,
         }: SourceFileOptions<P>,
         source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
@@ -373,6 +387,11 @@ impl Engine {
                 } else {
                     None
                 },
+                admin2_codes: if let Some(p) = admin2_codes {
+                    Some(std::fs::read_to_string(p)?)
+                } else {
+                    None
+                },
                 filter_languages,
             },
             source_etag,
@@ -386,6 +405,7 @@ impl Engine {
             countries,
             filter_languages,
             admin1_codes,
+            admin2_codes,
         }: SourceFileContentOptions,
         source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
@@ -470,7 +490,7 @@ impl Engine {
             None => None,
         };
 
-        // load admin code info
+        // load admin1 code info
         let admin1_by_code: Option<HashMap<String, AdminDivision>> = match admin1_codes {
             Some(contents) => {
                 #[cfg(feature = "tracing")]
@@ -498,7 +518,45 @@ impl Engine {
 
                 #[cfg(feature = "tracing")]
                 tracing::info!(
-                    "Engine read {} admin codes took {}ms",
+                    "Engine read {} admin1 codes took {}ms",
+                    admin_division.len(),
+                    now.elapsed().as_millis(),
+                );
+
+                Some(admin_division)
+            }
+            None => None,
+        };
+
+        // load admin2 code info
+        let admin2_by_code: Option<HashMap<String, AdminDivision>> = match admin2_codes {
+            Some(contents) => {
+                #[cfg(feature = "tracing")]
+                let now = Instant::now();
+
+                let mut rdr = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .delimiter(b'\t')
+                    .from_reader(contents.as_bytes());
+
+                let admin_division = rdr
+                    .deserialize()
+                    .filter_map(|row| {
+                        let record: Admin2CodeRecordRaw = row.ok()?;
+                        Some((
+                            record.code.clone(),
+                            AdminDivision {
+                                id: record.geonameid,
+                                code: record.code,
+                                name: record.name,
+                            },
+                        ))
+                    })
+                    .collect::<HashMap<String, AdminDivision>>();
+
+                #[cfg(feature = "tracing")]
+                tracing::info!(
+                    "Engine read {} admin2 codes took {}ms",
                     admin_division.len(),
                     now.elapsed().as_millis(),
                 );
@@ -528,8 +586,17 @@ impl Engine {
                     HashSet::<usize>::new()
                 };
 
-                let admin1_geoids = if let Some(ref admin1_by_code) = admin1_by_code {
-                    admin1_by_code
+                let admin1_geoids = if let Some(ref admin_codes) = admin1_by_code {
+                    admin_codes
+                        .values()
+                        .map(|item| item.id)
+                        .collect::<HashSet<usize>>()
+                } else {
+                    HashSet::<usize>::new()
+                };
+
+                let admin2_geoids = if let Some(ref admin_codes) = admin2_by_code {
+                    admin_codes
                         .values()
                         .map(|item| item.id)
                         .collect::<HashSet<usize>>()
@@ -555,10 +622,22 @@ impl Engine {
                                 if let Ok(r) = row { r } else { continue };
 
                             let is_city_name = city_geoids.contains(&record.geonameid);
-                            let is_country_name = country_geoids.contains(&record.geonameid);
-                            let is_admin1_name = admin1_geoids.contains(&record.geonameid);
+                            let mut skip = !is_city_name;
 
-                            if !is_city_name && !is_country_name && !is_admin1_name {
+                            if skip {
+                                skip = !country_geoids.contains(&record.geonameid)
+                            }
+
+                            if skip {
+                                skip = !admin1_geoids.contains(&record.geonameid)
+                            }
+
+                            if skip {
+                                skip = !admin2_geoids.contains(&record.geonameid)
+                            }
+
+                            // entry not used
+                            if skip {
                                 continue;
                             }
 
@@ -725,6 +804,25 @@ impl Engine {
                 None
             };
 
+            let admin2_division = if let Some(ref a) = admin2_by_code {
+                a.get(&format!(
+                    "{}.{}.{}",
+                    record.country_code, record.admin1_code, record.admin2_code
+                ))
+                .cloned()
+            } else {
+                None
+            };
+
+            let admin2_names = if let Some(ref a) = admin2_division {
+                match names_by_id {
+                    Some(ref names) => names.get(&a.id).cloned(),
+                    None => None,
+                }
+            } else {
+                None
+            };
+
             geonames.insert(
                 record.geonameid,
                 CitiesRecord {
@@ -732,6 +830,7 @@ impl Engine {
                     name: record.name,
                     country,
                     admin_division,
+                    admin2_division,
                     latitude: record.latitude,
                     longitude: record.longitude,
                     timezone: record.timezone,
@@ -741,6 +840,7 @@ impl Engine {
                     },
                     country_names,
                     admin1_names,
+                    admin2_names,
                     population: record.population,
                 },
             );

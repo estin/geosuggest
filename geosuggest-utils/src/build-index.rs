@@ -36,6 +36,10 @@ struct Files {
     #[arg(short, long)]
     admin_codes: Option<String>,
 
+    /// Admin2 codes file
+    #[arg(short, long)]
+    admin2_codes: Option<String>,
+
     /// Languages
     #[arg(short, long)]
     languages: Option<String>,
@@ -72,6 +76,10 @@ struct Urls {
     /// Admin codes url
     #[arg(short, long)]
     admin_codes_url: Option<String>,
+
+    /// Admin2 codes url
+    #[arg(short, long)]
+    admin2_codes_url: Option<String>,
 
     /// Languages
     #[arg(short, long)]
@@ -144,6 +152,7 @@ async fn main() -> Result<()> {
                     names: args.names,
                     countries: args.countries,
                     admin1_codes: args.admin_codes,
+                    admin2_codes: args.admin2_codes,
                     filter_languages: if let Some(languages) = &args.languages {
                         languages.split(',').map(AsRef::as_ref).collect()
                     } else {

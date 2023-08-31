@@ -80,6 +80,7 @@ $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
         "code": "RU.86",
         "name": "Voronezj"
       },
+      "admin2_division": null,
       "timezone": "Europe/Moscow",
       "latitude": 51.67204,
       "longitude": 39.1843,

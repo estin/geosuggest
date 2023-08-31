@@ -18,6 +18,7 @@ fn get_engine(
             countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
             filter_languages: vec![],
             admin1_codes: Some("tests/misc/admin1-codes.txt"),
+            admin2_codes: Some("tests/misc/admin2-codes.txt"),
         },
         HashMap::new(),
     )
@@ -26,11 +27,21 @@ fn get_engine(
 #[test_log::test]
 fn suggest() -> Result<(), Box<dyn Error>> {
     let engine = get_engine(None, None, None)?;
+
     let items = engine.suggest("voronezh", 1, None);
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].name, "Voronezh");
     assert_eq!(items[0].country.as_ref().unwrap().name, "Russia");
     assert_eq!(items[0].admin_division.as_ref().unwrap().name, "Voronezj");
+
+    let items = engine.suggest("Beverley", 1, None);
+    tracing::info!("Items {items:#?}");
+    assert_eq!(items[0].name, "Beverley");
+    assert_eq!(
+        items[0].admin2_division.as_ref().unwrap().name,
+        "East Riding of Yorkshire"
+    );
+
     Ok(())
 }
 
@@ -46,6 +57,16 @@ fn reverse() -> Result<(), Box<dyn Error>> {
     assert_eq!(
         items[0].city.admin_division.as_ref().unwrap().name,
         "Voronezj"
+    );
+
+    let result = engine.reverse((53.84587, -0.42332), 1, None);
+    assert!(result.is_some());
+    let items = result.unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].city.name, "Beverley");
+    assert_eq!(
+        items[0].city.admin2_division.as_ref().unwrap().name,
+        "East Riding of Yorkshire"
     );
 
     Ok(())

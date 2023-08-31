@@ -21,6 +21,7 @@ RUN cd /tmp \
     && curl -sL http://download.geonames.org/export/dump/$CITIES.zip --output $CITIES.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output alternateNamesV2.zip \
     && curl -sL http://download.geonames.org/export/dump/admin1CodesASCII.txt --output /tmp/admin1CodesASCII.txt \
+    && curl -sL http://download.geonames.org/export/dump/admin2Codes.txt --output /tmp/admin2Codes.txt \
     && curl -sl http://download.geonames.org/export/dump/countryInfo.txt --output /tmp/countryInfo.txt \
     && unzip $CITIES.zip \
     && unzip alternateNamesV2.zip
@@ -33,6 +34,7 @@ RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
     --cities=/tmp/fixed-$CITIES.txt \
     --names=/tmp/alternateNamesV2.txt \
     --admin-codes=/tmp/admin1CodesASCII.txt \
+    --admin2-codes=/tmp/admin2Codes.txt \
     --countries=/tmp/countryInfo.txt \
     --languages=ru,uk,be,zh,ja \
     --output=/opt/$GEOSUGGEST_INDEX
