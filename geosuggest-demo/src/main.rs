@@ -27,6 +27,7 @@ pub struct CityResultItem {
     name: String,
     country: Option<CountryItem>,
     admin_division: Option<AdminDivisionItem>,
+    admin2_division: Option<AdminDivisionItem>,
     timezone: String,
     latitude: f64,
     longitude: f64,
