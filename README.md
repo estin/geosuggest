@@ -45,7 +45,7 @@ $ cargo build --release
 Build index file
 
 ```bash
-$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --features=cli -- \
+$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --features=cli,tracing -- \
     from-urls \
     --languages=ru,uk,be,zh,ja \
     --output=/tmp/geosuggest-index.bincode

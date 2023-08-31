@@ -16,9 +16,10 @@ edition = "2021"
 default = []
 oaph_support = ["oaph"]
 geoip2_support = ["geoip2"]
+tracing = ["dep:tracing"]
 
 [dependencies]
-tracing.workspace = true
+tracing = { workspace = true, optional = true }
 csv.workspace = true
 serde.workspace = true
 rayon.workspace = true

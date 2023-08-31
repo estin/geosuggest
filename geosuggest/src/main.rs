@@ -1,6 +1,8 @@
 use std::boxed::Box;
 use std::sync::Arc;
 use std::time::Instant;
+
+#[cfg(feature = "tracing")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg(feature = "geoip2_support")]
@@ -362,6 +364,7 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
 
     aoph.render_to_file(include_str!("openapi3.yaml"), &openapi3_yaml_path)?;
 
+    #[cfg(feature = "tracing")]
     tracing::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
 
     let title = format!("geosuggest v{}", VERSION);
@@ -391,14 +394,18 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
 #[ntex::main]
 async fn main() -> std::io::Result<()> {
     // logging
-    let subscriber = tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer());
-    subscriber.init();
+    #[cfg(feature = "tracing")]
+    {
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::new(
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            ))
+            .with(tracing_subscriber::fmt::layer());
+        subscriber.init();
+    }
 
     let settings = settings::Settings::new().expect("On read settings");
+    #[cfg(feature = "tracing")]
     tracing::info!("Settings are:\n{:#?}", settings);
 
     // generate files for openapi3.yaml and swagger ui
@@ -424,6 +431,7 @@ async fn main() -> std::io::Result<()> {
     let settings_clone = settings.clone();
 
     let listen_on = format!("{}:{}", settings.host, settings.port);
+    #[cfg(feature = "tracing")]
     tracing::info!("Listen on {}", listen_on);
 
     web::server(move || {

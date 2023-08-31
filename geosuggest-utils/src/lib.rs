@@ -54,8 +54,10 @@ impl<'a> IndexUpdater<'a> {
     }
 
     pub async fn has_updates(&self, engine: &Engine) -> Result<bool> {
+        #[cfg(feature = "tracing")]
         tracing::info!("Check updates");
         if engine.source_etag.is_empty() {
+            #[cfg(feature = "tracing")]
             tracing::info!("Engine hasn't source ETAGs");
             return Ok(true);
         }
@@ -85,6 +87,7 @@ impl<'a> IndexUpdater<'a> {
                 .unwrap_or("");
             let new_etag = etag?;
             if current_etag != new_etag {
+                #[cfg(feature = "tracing")]
                 tracing::info!("New version of {entry}");
                 return Ok(true);
             }
@@ -95,6 +98,7 @@ impl<'a> IndexUpdater<'a> {
 
     pub async fn get_etag(&self, url: &str) -> Result<String> {
         let response = self.http_client.head(url).send().await?;
+        #[cfg(feature = "tracing")]
         tracing::info!("Try HEAD {url}");
 
         Ok(response
@@ -107,6 +111,7 @@ impl<'a> IndexUpdater<'a> {
 
     pub async fn fetch(&self, url: &str, filename: Option<&str>) -> Result<(String, Vec<u8>)> {
         let response = self.http_client.get(url).send().await?;
+        #[cfg(feature = "tracing")]
         tracing::info!("Try GET {url}");
 
         if !response.status().is_success() {
@@ -121,6 +126,7 @@ impl<'a> IndexUpdater<'a> {
             .unwrap_or_default();
 
         let content = response.bytes().await?.to_vec();
+        #[cfg(feature = "tracing")]
         tracing::info!("Downloaded {url} size: {}", content.len());
 
         let content = if let Some(filename) = filename {
@@ -168,6 +174,7 @@ impl<'a> IndexUpdater<'a> {
             })
             .collect();
 
+        #[cfg(feature = "tracing")]
         tracing::info!("Try to build index...");
 
         Engine::new_from_files_content(

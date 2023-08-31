@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+
+#[cfg(feature = "tracing")]
 use std::time::Instant;
 
 use itertools::Itertools;
@@ -387,6 +389,7 @@ impl Engine {
         }: SourceFileContentOptions,
         source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
+        #[cfg(feature = "tracing")]
         let now = Instant::now();
 
         let mut entries: Vec<(usize, String)> = Vec::new();
@@ -413,6 +416,7 @@ impl Engine {
                 m1
             });
 
+        #[cfg(feature = "tracing")]
         tracing::info!(
             "Engine read {} cities took {}ms",
             records.len(),
@@ -422,6 +426,7 @@ impl Engine {
         // load country info
         let country_by_code: Option<HashMap<String, Country>> = match countries {
             Some(contents) => {
+                #[cfg(feature = "tracing")]
                 let now = Instant::now();
 
                 let contents = skip_comment_lines(contents);
@@ -436,7 +441,9 @@ impl Engine {
                     .filter_map(|row| {
                         let record: CountryInfoRaw = row
                             .map_err(|e| {
+                                #[cfg(feature = "tracing")]
                                 tracing::error!("On read country row: {e}");
+
                                 e
                             })
                             .ok()?;
@@ -451,6 +458,7 @@ impl Engine {
                     })
                     .collect::<HashMap<String, Country>>();
 
+                #[cfg(feature = "tracing")]
                 tracing::info!(
                     "Engine read {} countries took {}ms",
                     countries.len(),
@@ -465,6 +473,7 @@ impl Engine {
         // load admin code info
         let admin1_by_code: Option<HashMap<String, AdminDivision>> = match admin1_codes {
             Some(contents) => {
+                #[cfg(feature = "tracing")]
                 let now = Instant::now();
 
                 let mut rdr = csv::ReaderBuilder::new()
@@ -487,6 +496,7 @@ impl Engine {
                     })
                     .collect::<HashMap<String, AdminDivision>>();
 
+                #[cfg(feature = "tracing")]
                 tracing::info!(
                     "Engine read {} admin codes took {}ms",
                     admin_division.len(),
@@ -500,6 +510,7 @@ impl Engine {
 
         let mut names_by_id: Option<HashMap<usize, HashMap<String, String>>> = match names {
             Some(contents) => {
+                #[cfg(feature = "tracing")]
                 let now = Instant::now();
 
                 // collect ids for cities
@@ -618,6 +629,7 @@ impl Engine {
                         m1
                     });
 
+                #[cfg(feature = "tracing")]
                 tracing::info!(
                     "Engine read {} names took {}ms",
                     records.len(),
@@ -744,6 +756,7 @@ impl Engine {
             geoip2_reader: None,
         };
 
+        #[cfg(feature = "tracing")]
         tracing::info!(
             "Engine ready (entries {}, geonames {}, capitals {}). took {}ms",
             engine.entries.len(),
@@ -759,6 +772,7 @@ impl Engine {
         path: P,
         format: EngineDumpFormat,
     ) -> std::io::Result<()> {
+        #[cfg(feature = "tracing")]
         let now = Instant::now();
         let file = std::fs::OpenOptions::new()
             .create(true)
@@ -773,13 +787,17 @@ impl Engine {
             })?,
         };
 
-        let metadata = std::fs::metadata(&path)?;
-        tracing::info!(
-            "Engine dump [{:?}] size: {} bytes. took {}ms",
-            format,
-            metadata.len(),
-            now.elapsed().as_millis(),
-        );
+        #[cfg(feature = "tracing")]
+        {
+            let metadata = std::fs::metadata(&path)?;
+
+            tracing::info!(
+                "Engine dump [{:?}] size: {} bytes. took {}ms",
+                format,
+                metadata.len(),
+                now.elapsed().as_millis(),
+            );
+        }
 
         Ok(())
     }
@@ -788,8 +806,10 @@ impl Engine {
         path: P,
         format: EngineDumpFormat,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        #[cfg(feature = "tracing")]
         tracing::info!("Engine starts load index from file [{:?}]...", format);
 
+        #[cfg(feature = "tracing")]
         let now = Instant::now();
         let file = std::fs::OpenOptions::new()
             .create(false)
@@ -817,6 +837,7 @@ impl Engine {
             geoip2_reader: None,
         };
 
+        #[cfg(feature = "tracing")]
         tracing::info!(
             "Engine loaded from file. took {}ms",
             now.elapsed().as_millis(),
@@ -862,6 +883,7 @@ impl Engine {
                 self.geonames.get(&id)
             }
             None => {
+                #[cfg(feature = "tracing")]
                 tracing::warn!("Geoip2 reader is't configured!");
                 None
             }
