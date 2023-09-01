@@ -32,7 +32,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCityQuery {
     /// geonameid of the City
-    id: usize,
+    id: u32,
     /// isolanguage code
     lang: Option<String>,
 }
@@ -53,6 +53,8 @@ pub struct SuggestQuery {
     lang: Option<String>,
     /// min score of Jaro Winkler similarity (by default 0.8)
     min_score: Option<f32>,
+    /// countries by 2-letter code to pre-filter search
+    countries: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -68,6 +70,8 @@ pub struct ReverseQuery {
     /// neareset cities to apply distance correction coefficient by population
     /// by default 10
     nearest_limit: Option<usize>,
+    /// countries by 2-letter code to filter results
+    countries: Option<Vec<String>>,
 }
 
 #[cfg(feature = "geoip2_support")]
@@ -116,21 +120,21 @@ pub struct ReverseResultItem<'a> {
 
 #[derive(Serialize, JsonSchema)]
 pub struct CountryItem<'a> {
-    id: usize,
+    id: u32,
     code: &'a str,
     name: &'a str,
 }
 
 #[derive(Serialize, JsonSchema)]
 pub struct AdminDivisionItem<'a> {
-    id: usize,
+    id: u32,
     code: &'a str,
     name: &'a str,
 }
 
 #[derive(Serialize, JsonSchema)]
 pub struct CityResultItem<'a> {
-    id: usize,
+    id: u32,
     name: &'a str,
     country: Option<CountryItem<'a>>,
     admin_division: Option<AdminDivisionItem<'a>>,
@@ -138,7 +142,7 @@ pub struct CityResultItem<'a> {
     timezone: &'a str,
     latitude: f32,
     longitude: f32,
-    population: usize,
+    population: u32,
 }
 
 #[cfg(feature = "geoip2_support")]
@@ -259,6 +263,7 @@ pub async fn suggest(
             query.pattern.as_str(),
             query.limit.unwrap_or(10),
             query.min_score,
+            query.countries.as_deref(),
         )
         .iter()
         .map(|item| CityResultItem::from_city(item, query.lang.as_deref()))
@@ -282,6 +287,7 @@ pub async fn reverse(
             (query.lat, query.lng),
             query.nearest_limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT),
             Some(query.k.unwrap_or(DEFAULT_K)),
+            query.countries.as_deref(),
         )
         .unwrap_or_default();
 

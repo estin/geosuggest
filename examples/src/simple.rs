@@ -18,10 +18,13 @@ async fn main() -> Result<()> {
     let engine = load_engine().await?;
 
     // use
-    tracing::info!("Suggest result: {:#?}", engine.suggest("Harare", 1, None));
+    tracing::info!(
+        "Suggest result: {:#?}",
+        engine.suggest::<&str>("Beverley", 1, None, Some(&["us"]))
+    );
     tracing::info!(
         "Reverse result: {:#?}",
-        engine.reverse((11.138298, 57.510973), 1, None)
+        engine.reverse::<&str>((11.138298, 57.510973), 1, None, None)
     );
 
     Ok(())

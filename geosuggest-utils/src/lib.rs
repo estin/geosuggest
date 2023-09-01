@@ -132,6 +132,8 @@ impl<'a> IndexUpdater<'a> {
         tracing::info!("Downloaded {url} size: {}", content.len());
 
         let content = if let Some(filename) = filename {
+            #[cfg(feature = "tracing")]
+            tracing::info!("Unzip {filename}");
             let cursor = Cursor::new(content);
             let mut archive = zip::read::ZipArchive::new(cursor)?;
             let file = archive

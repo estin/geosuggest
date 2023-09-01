@@ -28,13 +28,13 @@ fn get_engine(
 fn suggest() -> Result<(), Box<dyn Error>> {
     let engine = get_engine(None, None, None)?;
 
-    let items = engine.suggest("voronezh", 1, None);
+    let items = engine.suggest::<&str>("voronezh", 1, None, None);
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].name, "Voronezh");
     assert_eq!(items[0].country.as_ref().unwrap().name, "Russia");
     assert_eq!(items[0].admin_division.as_ref().unwrap().name, "Voronezj");
 
-    let items = engine.suggest("Beverley", 1, None);
+    let items = engine.suggest::<&str>("Beverley", 1, None, None);
     tracing::info!("Items {items:#?}");
     assert_eq!(items[0].name, "Beverley");
     assert_eq!(
@@ -42,13 +42,19 @@ fn suggest() -> Result<(), Box<dyn Error>> {
         "East Riding of Yorkshire"
     );
 
+    let items = engine.suggest("Beverley", 1, None, Some(&["ru"]));
+    assert_eq!(items.len(), 0);
+
+    let items = engine.suggest("Beverley", 1, None, Some(&["gb"]));
+    assert_eq!(items.len(), 1);
+
     Ok(())
 }
 
 #[test_log::test]
 fn reverse() -> Result<(), Box<dyn Error>> {
     let engine = get_engine(None, None, None)?;
-    let result = engine.reverse((51.6372, 39.1937), 1, None);
+    let result = engine.reverse::<&str>((51.6372, 39.1937), 1, None, None);
     assert!(result.is_some());
     let items = result.unwrap();
     assert_eq!(items.len(), 1);
@@ -59,7 +65,7 @@ fn reverse() -> Result<(), Box<dyn Error>> {
         "Voronezj"
     );
 
-    let result = engine.reverse((53.84587, -0.42332), 1, None);
+    let result = engine.reverse::<&str>((53.84587, -0.42332), 1, None, None);
     assert!(result.is_some());
     let items = result.unwrap();
     assert_eq!(items.len(), 1);
@@ -68,6 +74,12 @@ fn reverse() -> Result<(), Box<dyn Error>> {
         items[0].city.admin2_division.as_ref().unwrap().name,
         "East Riding of Yorkshire"
     );
+
+    let result = engine.reverse((53.84587, -0.42332), 1, None, Some(&["ru"]));
+    assert_eq!(result.unwrap().len(), 0);
+
+    let result = engine.reverse((53.84587, -0.42332), 1, None, Some(&["gb"]));
+    assert_eq!(result.unwrap().len(), 1);
 
     Ok(())
 }
@@ -114,14 +126,18 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
     )?;
 
     assert_eq!(
-        engine.suggest("voronezh", 100, None).len(),
-        from_dump.suggest("voronezh", 100, None).len(),
+        engine.suggest::<&str>("voronezh", 100, None, None).len(),
+        from_dump.suggest::<&str>("voronezh", 100, None, None).len(),
     );
 
     let coords = (51.6372, 39.1937);
     assert_eq!(
-        engine.reverse(coords, 1, None).unwrap()[0].city.id,
-        from_dump.reverse(coords, 1, None).unwrap()[0].city.id,
+        engine.reverse::<&str>(coords, 1, None, None).unwrap()[0]
+            .city
+            .id,
+        from_dump.reverse::<&str>(coords, 1, None, None).unwrap()[0]
+            .city
+            .id,
     );
 
     Ok(())
@@ -143,7 +159,7 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     // }
 
     // without weight coefficient
-    let result = engine.reverse((55.67738, 37.76006), 5, None);
+    let result = engine.reverse::<&str>((55.67738, 37.76006), 5, None, None);
     assert!(result.is_some());
     let items = result.unwrap();
     assert_eq!(items.len(), 3);
@@ -151,7 +167,7 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     assert_eq!(items[0].city.name, "Lyublino");
 
     // with weight coefficient
-    let result = engine.reverse((55.67738, 37.76006), 5, Some(population_weight));
+    let result = engine.reverse::<&str>((55.67738, 37.76006), 5, Some(population_weight), None);
     assert!(result.is_some());
     let items = result.unwrap();
     assert_eq!(items.len(), 3);
@@ -168,7 +184,7 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     // }
 
     // with weight coefficient
-    let result = engine.reverse((55.67719, 37.89322), 5, Some(population_weight));
+    let result = engine.reverse::<&str>((55.67719, 37.89322), 5, Some(population_weight), None);
     assert!(result.is_some());
     let items = result.unwrap();
     tracing::trace!("Reverse result: {:#?}", items);

@@ -9,21 +9,21 @@ mod bindings;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CountryItem {
-    id: usize,
+    id: u32,
     code: String,
     name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AdminDivisionItem {
-    id: usize,
+    id: u32,
     code: String,
     name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CityResultItem {
-    id: usize,
+    id: u32,
     name: String,
     country: Option<CountryItem>,
     admin_division: Option<AdminDivisionItem>,

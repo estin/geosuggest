@@ -25,6 +25,8 @@ use geoip2::{City, Reader};
 #[cfg(feature = "oaph_support")]
 use oaph::schemars::{self, JsonSchema};
 
+type CountryFilterFn = dyn Fn(&CitiesRecord) -> Option<()>;
+
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
     pub names: Option<P>,
@@ -49,7 +51,7 @@ struct Admin1CodeRecordRaw {
     code: String,
     name: String,
     _asciiname: String,
-    geonameid: usize,
+    geonameid: u32,
 }
 
 // code, name, name ascii, geonameid
@@ -58,13 +60,13 @@ struct Admin2CodeRecordRaw {
     code: String,
     name: String,
     _asciiname: String,
-    geonameid: usize,
+    geonameid: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
 pub struct AdminDivision {
-    pub id: usize,
+    pub id: u32,
     pub code: String,
     pub name: String,
 }
@@ -93,7 +95,7 @@ pub struct AdminDivision {
 
 #[derive(Debug, Deserialize)]
 struct CitiesRecordRaw {
-    geonameid: usize,
+    geonameid: u32,
     name: String,
     asciiname: String,
     alternatenames: String,
@@ -107,7 +109,7 @@ struct CitiesRecordRaw {
     admin2_code: String,
     _admin3_code: String,
     _admin4_code: String,
-    population: usize,
+    population: u32,
     _elevation: String,
     _dem: String,
     timezone: String,
@@ -126,7 +128,7 @@ struct CountryInfoRaw {
     name: String,
     _capital: String,
     _area: String,
-    _population: usize,
+    _population: u32,
     _continent: String,
     _tld: String,
     _currency_code: String,
@@ -135,7 +137,7 @@ struct CountryInfoRaw {
     _postal_code_format: String,
     _postal_code_regex: String,
     _languages: String,
-    geonameid: usize,
+    geonameid: u32,
     _neighbours: String,
     _equivalent_fips_code: String,
 }
@@ -154,8 +156,8 @@ struct CountryInfoRaw {
 // to		  : to period when the name was used
 #[derive(Debug, Deserialize)]
 struct AlternateNamesRaw {
-    _alternate_name_id: usize,
-    geonameid: usize,
+    _alternate_name_id: u32,
+    geonameid: u32,
     isolanguage: String,
     alternate_name: String,
     is_prefered_name: String,
@@ -169,7 +171,7 @@ struct AlternateNamesRaw {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
 pub struct Country {
-    pub id: usize,
+    pub id: u32,
     pub code: String,
     pub name: String,
 }
@@ -177,7 +179,7 @@ pub struct Country {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
 pub struct CitiesRecord {
-    pub id: usize,
+    pub id: u32,
     pub name: String,
     pub latitude: f32,
     pub longitude: f32,
@@ -189,7 +191,7 @@ pub struct CitiesRecord {
     pub country_names: Option<HashMap<String, String>>,
     pub admin1_names: Option<HashMap<String, String>>,
     pub admin2_names: Option<HashMap<String, String>>,
-    pub population: usize,
+    pub population: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -203,9 +205,10 @@ pub struct ReverseItem<'a> {
 #[derive(Deserialize)]
 struct EngineDump {
     source_etag: HashMap<String, String>,
-    entries: Vec<(usize, String)>,
-    geonames: HashMap<usize, CitiesRecord>,
-    capitals: HashMap<String, usize>,
+    entries: Vec<Entry>,
+    geonames: HashMap<u32, CitiesRecord>,
+    capitals: HashMap<String, u32>,
+    country_id_by_code: HashMap<String, u32>,
 }
 
 #[derive(Debug, Default)]
@@ -215,15 +218,23 @@ pub enum EngineDumpFormat {
     Bincode,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Entry {
+    id: u32,                 // geoname id
+    value: String,           // searchable value
+    country_id: Option<u32>, // geoname country id
+}
+
 #[derive(Serialize)]
 pub struct Engine {
     pub source_etag: HashMap<String, String>,
-    entries: Vec<(usize, String)>,
-    geonames: HashMap<usize, CitiesRecord>,
-    capitals: HashMap<String, usize>,
+    entries: Vec<Entry>,
+    geonames: HashMap<u32, CitiesRecord>,
+    capitals: HashMap<String, u32>,
+    country_id_by_code: HashMap<String, u32>,
 
     #[serde(skip_serializing)]
-    tree: KdTree<f32, usize, 2, 32, u16>,
+    tree: KdTree<f32, u32, 2, 32, u16>,
 
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
@@ -235,7 +246,7 @@ pub fn skip_comment_lines(content: String) -> String {
 }
 
 impl Engine {
-    pub fn get(&self, id: &usize) -> Option<&CitiesRecord> {
+    pub fn get(&self, id: &u32) -> Option<&CitiesRecord> {
         self.geonames.get(id)
     }
 
@@ -247,11 +258,12 @@ impl Engine {
         }
     }
 
-    pub fn suggest(
+    pub fn suggest<T: AsRef<str>>(
         &self,
         pattern: &str,
         limit: usize,
         min_score: Option<f32>,
+        countries: Option<&[T]>,
     ) -> Vec<&CitiesRecord> {
         if limit == 0 {
             return Vec::new();
@@ -259,23 +271,45 @@ impl Engine {
 
         let min_score = min_score.unwrap_or(0.8);
         let normalized_pattern = pattern.to_lowercase();
-        // search on whole index
-        let mut result = self
-            .entries
-            .par_iter()
-            .filter_map(|item| {
-                let score = if item.1.starts_with(&normalized_pattern) {
-                    1.0
-                } else {
-                    jaro_winkler(&item.1, &normalized_pattern) as f32
-                };
-                if score > min_score {
-                    self.geonames.get(&item.0).map(|city| (city, score))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<(&CitiesRecord, f32)>>();
+
+        let filter_by_pattern = |item: &Entry| -> Option<(&CitiesRecord, f32)> {
+            let score = if item.value.starts_with(&normalized_pattern) {
+                1.0
+            } else {
+                jaro_winkler(&item.value, &normalized_pattern) as f32
+            };
+            if score > min_score {
+                self.geonames.get(&item.id).map(|city| (city, score))
+            } else {
+                None
+            }
+        };
+
+        let mut result: Vec<(&CitiesRecord, f32)> = match &countries {
+            // prefilter by countries
+            Some(countries) => {
+                let country_ids = countries
+                    .iter()
+                    .filter_map(|code| self.country_id_by_code.get(&code.as_ref().to_uppercase()))
+                    .collect::<Vec<&u32>>();
+                self.entries
+                    .par_iter()
+                    .filter(|item| {
+                        if let Some(country_id) = &item.country_id {
+                            country_ids.contains(&country_id)
+                        } else {
+                            false
+                        }
+                    })
+                    .filter_map(filter_by_pattern)
+                    .collect()
+            }
+            None => self
+                .entries
+                .par_iter()
+                .filter_map(filter_by_pattern)
+                .collect(),
+        };
 
         // sort by score desc, population desc
         result.sort_by(|lhs, rhs| {
@@ -299,25 +333,48 @@ impl Engine {
             .collect::<Vec<&CitiesRecord>>()
     }
 
-    pub fn reverse(
+    pub fn reverse<T: AsRef<str>>(
         &self,
         loc: (f32, f32),
         limit: usize,
         k: Option<f32>,
+        countries: Option<&[T]>,
     ) -> Option<Vec<ReverseItem>> {
         if limit == 0 {
             return None;
         }
         let k = k.unwrap_or(0.0);
+
+        let filter_by_countries: Box<CountryFilterFn> = if let Some(countries) = countries {
+            // normalize
+            let countries = countries
+                .iter()
+                .map(|code| code.as_ref().to_uppercase())
+                .collect::<Vec<_>>();
+            Box::new(move |city: &CitiesRecord| -> Option<()> {
+                if let Some(country) = &city.country {
+                    if countries.contains(&country.code) {
+                        Some(())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        } else {
+            Box::new(|_city: &CitiesRecord| -> Option<()> { Some(()) })
+        };
+
         if k != 0.0 {
             // use population as point weight
             let mut points = self
                 .tree
-                // find N * 10 cities and sort them by score
                 .nearest_n(&[loc.0, loc.1], limit, &squared_euclidean)
                 .iter()
                 .filter_map(|nearest| {
                     let city = self.geonames.get(&nearest.item)?;
+                    filter_by_countries(city)?;
                     Some((
                         nearest.distance,
                         nearest.distance - k * city.population as f32,
@@ -343,14 +400,15 @@ impl Engine {
         } else {
             Some(
                 self.tree
-                    // find N * 10 cities and sort them by score
                     .nearest_n(&[loc.0, loc.1], limit, &squared_euclidean)
                     .iter()
                     .filter_map(|p| {
+                        let city = self.geonames.get(&p.item)?;
+                        filter_by_countries(city)?;
                         Some(ReverseItem {
                             distance: p.distance,
                             score: p.distance,
-                            city: self.geonames.get(&p.item)?,
+                            city,
                         })
                     })
                     .collect(),
@@ -412,9 +470,9 @@ impl Engine {
         #[cfg(feature = "tracing")]
         let now = Instant::now();
 
-        let mut entries: Vec<(usize, String)> = Vec::new();
-        let mut geonames: HashMap<usize, CitiesRecord> = HashMap::new();
-        let mut capitals: HashMap<String, usize> = HashMap::new();
+        let mut entries: Vec<Entry> = Vec::new();
+        let mut geonames: HashMap<u32, CitiesRecord> = HashMap::new();
+        let mut capitals: HashMap<String, u32> = HashMap::new();
 
         let records = split_content_to_n_parts(&cities, rayon::current_num_threads())
             .par_iter()
@@ -566,7 +624,7 @@ impl Engine {
             None => None,
         };
 
-        let mut names_by_id: Option<HashMap<usize, HashMap<String, String>>> = match names {
+        let mut names_by_id: Option<HashMap<u32, HashMap<String, String>>> = match names {
             Some(contents) => {
                 #[cfg(feature = "tracing")]
                 let now = Instant::now();
@@ -575,33 +633,33 @@ impl Engine {
                 let city_geoids = records
                     .iter()
                     .map(|item| item.geonameid)
-                    .collect::<HashSet<usize>>();
+                    .collect::<HashSet<u32>>();
 
                 let country_geoids = if let Some(ref country_by_code) = country_by_code {
                     country_by_code
                         .values()
                         .map(|item| item.id)
-                        .collect::<HashSet<usize>>()
+                        .collect::<HashSet<u32>>()
                 } else {
-                    HashSet::<usize>::new()
+                    HashSet::<u32>::new()
                 };
 
                 let admin1_geoids = if let Some(ref admin_codes) = admin1_by_code {
                     admin_codes
                         .values()
                         .map(|item| item.id)
-                        .collect::<HashSet<usize>>()
+                        .collect::<HashSet<u32>>()
                 } else {
-                    HashSet::<usize>::new()
+                    HashSet::<u32>::new()
                 };
 
                 let admin2_geoids = if let Some(ref admin_codes) = admin2_by_code {
                     admin_codes
                         .values()
                         .map(|item| item.id)
-                        .collect::<HashSet<usize>>()
+                        .collect::<HashSet<u32>>()
                 } else {
-                    HashSet::<usize>::new()
+                    HashSet::<u32>::new()
                 };
 
                 // TODO: split to N parts can split one geonameid and build not accurate index
@@ -614,7 +672,7 @@ impl Engine {
                             .delimiter(b'\t')
                             .from_reader(chunk.as_bytes());
 
-                        let mut names_by_id: HashMap<usize, HashMap<String, AlternateNamesRaw>> =
+                        let mut names_by_id: HashMap<u32, HashMap<String, AlternateNamesRaw>> =
                             HashMap::new();
 
                         for row in rdr.deserialize() {
@@ -682,7 +740,7 @@ impl Engine {
                         }
 
                         // convert names to simple struct
-                        let result: HashMap<usize, HashMap<String, String>> =
+                        let result: HashMap<u32, HashMap<String, String>> =
                             names_by_id.iter().fold(HashMap::new(), |mut acc, c| {
                                 let (geonameid, names) = c;
                                 acc.insert(
@@ -757,14 +815,30 @@ impl Engine {
 
             tree.add(&[record.latitude, record.longitude], record.geonameid);
 
-            entries.push((record.geonameid, record.name.to_lowercase().to_owned()));
+            let country_id = country_by_code
+                .as_ref()
+                .and_then(|m| m.get(&record.country_code).map(|c| c.id));
+
+            entries.push(Entry {
+                id: record.geonameid,
+                value: record.name.to_lowercase().to_owned(),
+                country_id,
+            });
 
             if record.name != record.asciiname {
-                entries.push((record.geonameid, record.asciiname.to_lowercase().to_owned()));
+                entries.push(Entry {
+                    id: record.geonameid,
+                    value: record.asciiname.to_lowercase().to_owned(),
+                    country_id,
+                });
             }
 
             for altname in record.alternatenames.split(',') {
-                entries.push((record.geonameid, altname.to_lowercase().to_owned()));
+                entries.push(Entry {
+                    id: record.geonameid,
+                    value: altname.to_lowercase(),
+                    country_id,
+                });
             }
 
             let country = if let Some(ref c) = country_by_code {
@@ -852,6 +926,15 @@ impl Engine {
             capitals,
             tree,
             entries,
+            country_id_by_code: if let Some(country_by_code) = country_by_code {
+                HashMap::from_iter(
+                    country_by_code
+                        .into_iter()
+                        .map(|(code, country)| (code, country.id)),
+                )
+            } else {
+                HashMap::new()
+            },
             #[cfg(feature = "geoip2_support")]
             geoip2_reader: None,
         };
@@ -932,6 +1015,7 @@ impl Engine {
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
             capitals: engine_dump.capitals,
+            country_id_by_code: engine_dump.country_id_by_code,
             tree,
             #[cfg(feature = "geoip2_support")]
             geoip2_reader: None,
@@ -979,7 +1063,7 @@ impl Engine {
             Some((_, reader)) => {
                 let result = reader.lookup(addr).ok()?;
                 let city = result.city?;
-                let id = city.geoname_id? as usize;
+                let id = city.geoname_id?;
                 self.geonames.get(&id)
             }
             None => {
