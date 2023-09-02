@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
@@ -6,7 +7,6 @@ use std::time::Instant;
 
 use itertools::Itertools;
 
-// use kiddo::{self, distance::squared_euclidean, KdTree};
 use kiddo::{
     self,
     float::{distance::squared_euclidean, kdtree::KdTree},
@@ -24,8 +24,6 @@ use geoip2::{City, Reader};
 
 #[cfg(feature = "oaph_support")]
 use oaph::schemars::{self, JsonSchema};
-
-type CountryFilterFn = dyn Fn(&CitiesRecord) -> Option<()>;
 
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
@@ -258,6 +256,11 @@ impl Engine {
         }
     }
 
+    /// Suggest cities by pattern (multilang).
+    ///
+    /// Optional: filter by Jaro–Winkler distance via min_score
+    ///
+    /// Optional: prefilter by countries
     pub fn suggest<T: AsRef<str>>(
         &self,
         pattern: &str,
@@ -286,7 +289,6 @@ impl Engine {
         };
 
         let mut result: Vec<(&CitiesRecord, f32)> = match &countries {
-            // prefilter by countries
             Some(countries) => {
                 let country_ids = countries
                     .iter()
@@ -333,6 +335,11 @@ impl Engine {
             .collect::<Vec<&CitiesRecord>>()
     }
 
+    /// Find the nearest cities by coordinates.
+    ///
+    /// Optional: score results by `k` as `distance - k * city.population` and sort by score.
+    ///
+    /// Optional: prefilter by countries. It's a very expensive case; consider building an index for concrete countries and not applying this filter at all.
     pub fn reverse<T: AsRef<str>>(
         &self,
         loc: (f32, f32),
@@ -343,53 +350,65 @@ impl Engine {
         if limit == 0 {
             return None;
         }
-        let k = k.unwrap_or(0.0);
 
-        let filter_by_countries: Box<CountryFilterFn> = if let Some(countries) = countries {
+        let nearest_limit = if countries.is_some() {
+            // ugly hack try to fetch nearest cities in requested countries
+            // much better build index for concreate cities
+            self.geonames.len() / 3
+        } else {
+            limit
+        };
+
+        let mut i1;
+        let mut i2;
+
+        let items = &mut self
+            .tree
+            .nearest_n(&[loc.0, loc.1], nearest_limit, &squared_euclidean);
+
+        let items: &mut dyn Iterator<Item = (_, &CitiesRecord)> = if let Some(countries) = countries
+        {
             // normalize
             let countries = countries
                 .iter()
                 .map(|code| code.as_ref().to_uppercase())
                 .collect::<Vec<_>>();
-            Box::new(move |city: &CitiesRecord| -> Option<()> {
-                if let Some(country) = &city.country {
-                    if countries.contains(&country.code) {
-                        Some(())
-                    } else {
-                        None
-                    }
+
+            i1 = items.into_iter().filter_map(move |nearest| {
+                let city = self.geonames.get(&nearest.item)?;
+                let country = city.country.as_ref()?;
+                if countries.contains(&country.code) {
+                    Some((nearest, city))
                 } else {
                     None
                 }
-            })
+            });
+            &mut i1
         } else {
-            Box::new(|_city: &CitiesRecord| -> Option<()> { Some(()) })
+            i2 = items.into_iter().filter_map(|nearest| {
+                let city = self.geonames.get(&nearest.item)?;
+                Some((nearest, city))
+            });
+            &mut i2
         };
 
-        if k != 0.0 {
-            // use population as point weight
-            let mut points = self
-                .tree
-                .nearest_n(&[loc.0, loc.1], limit, &squared_euclidean)
-                .iter()
-                .filter_map(|nearest| {
-                    let city = self.geonames.get(&nearest.item)?;
-                    filter_by_countries(city)?;
-                    Some((
-                        nearest.distance,
-                        nearest.distance - k * city.population as f32,
-                        city,
-                    ))
+        if let Some(k) = k {
+            let mut points = items
+                .map(|item| {
+                    (
+                        item.0.distance,
+                        item.0.distance - k * item.1.population as f32,
+                        item.1,
+                    )
                 })
-                .collect::<Vec<(f32, f32, &CitiesRecord)>>();
+                .take(limit)
+                .collect::<Vec<_>>();
 
-            // points.sort_by_key(|i| i.0);
             points.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
             Some(
                 points
                     .iter()
-                    .take(limit)
                     .map(|p| ReverseItem {
                         distance: p.0,
                         score: p.1,
@@ -399,18 +418,13 @@ impl Engine {
             )
         } else {
             Some(
-                self.tree
-                    .nearest_n(&[loc.0, loc.1], limit, &squared_euclidean)
-                    .iter()
-                    .filter_map(|p| {
-                        let city = self.geonames.get(&p.item)?;
-                        filter_by_countries(city)?;
-                        Some(ReverseItem {
-                            distance: p.distance,
-                            score: p.distance,
-                            city,
-                        })
+                items
+                    .map(|item| ReverseItem {
+                        distance: item.0.distance,
+                        score: item.0.distance,
+                        city: item.1,
                     })
+                    .take(limit)
                     .collect(),
             )
         }

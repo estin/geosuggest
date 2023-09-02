@@ -11,7 +11,6 @@ categories = ["web-programming::http-server"]
 license = "MIT"
 edition = "2021"
 
-
 [features]
 default = []
 oaph_support = ["oaph"]
@@ -33,5 +32,8 @@ geoip2 = { workspace = true, optional = true}
 oaph = { workspace = true, optional = true }
 
 [dev-dependencies]
+anyhow.workspace = true
+tokio.workspace = true
 test-log.workspace = true
 tracing-subscriber.workspace = true
+geosuggest-utils = { path = "../geosuggest-utils" }
