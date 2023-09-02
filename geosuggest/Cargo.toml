@@ -1,6 +1,6 @@
 [package]
 name = "geosuggest"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["geosuggest contributors"]
 description = "Suggest by name or find nearest by coordinates cities"
 readme = "README.md"
@@ -33,7 +33,7 @@ ntex-files.workspace = true
 ntex-cors.workspace = true
 config.workspace = true
 
-geosuggest-core = { path = "../geosuggest-core", version = "0.3", features = ["oaph_support"] }
+geosuggest-core = { path = "../geosuggest-core", version = "0.4", features = ["oaph_support"] }
 
 # openapi3
 oaph.workspace = true 
