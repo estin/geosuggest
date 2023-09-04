@@ -179,7 +179,7 @@ impl<'a> IndexUpdater<'a> {
                 let Ok((etag, _)) = v else {
                 return None
             };
-                Some((k.to_string(), etag.to_string()))
+                Some(((*k).to_string(), etag.to_string()))
             })
             .collect();
 
