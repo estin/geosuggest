@@ -239,7 +239,7 @@ pub struct Engine {
     geoip2_reader: Option<(&'static Vec<u8>, &'static Reader<'static, City<'static>>)>,
 }
 
-pub fn skip_comment_lines(content: String) -> String {
+pub fn skip_comment_lines(content: &str) -> String {
     content.lines().filter(|l| !l.starts_with('#')).join("\n")
 }
 
@@ -521,7 +521,7 @@ impl Engine {
                 #[cfg(feature = "tracing")]
                 let now = Instant::now();
 
-                let contents = skip_comment_lines(contents);
+                let contents = skip_comment_lines(&contents);
 
                 let mut rdr = csv::ReaderBuilder::new()
                     .has_headers(false)
