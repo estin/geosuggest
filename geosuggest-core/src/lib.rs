@@ -353,8 +353,8 @@ impl Engine {
 
         let nearest_limit = if countries.is_some() {
             // ugly hack try to fetch nearest cities in requested countries
-            // much better build index for concreate cities
-            self.geonames.len() / 3
+            // much better is ot build index for concreate countries
+            self.geonames.len()
         } else {
             limit
         };

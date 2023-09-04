@@ -75,7 +75,7 @@ fn reverse() -> Result<(), Box<dyn Error>> {
         "East Riding of Yorkshire"
     );
 
-    let result = engine.reverse((53.84587, -0.42332), 1, None, Some(&["ru"]));
+    let result = engine.reverse((53.84587, -0.42332), 1, None, Some(&["ar"]));
     assert_eq!(result.unwrap().len(), 0);
 
     let result = engine.reverse((53.84587, -0.42332), 1, None, Some(&["gb"]));

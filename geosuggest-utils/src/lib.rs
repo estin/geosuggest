@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};

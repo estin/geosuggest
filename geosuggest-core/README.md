@@ -6,7 +6,7 @@
 
 [Live demo](https://geosuggest.etatarkin.ru/) with [sources](https://github.com/estin/geosuggest/tree/master/geosuggest-demo)
 
-[Http service](https://github.com/estin/geosuggest)
+[HTTP service](https://github.com/estin/geosuggest)
 
 [Examples](https://github.com/estin/geosuggest/tree/master/examples/src)
 
