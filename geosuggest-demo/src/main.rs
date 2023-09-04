@@ -325,7 +325,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
         });
     });
 
-    // singal to accept coordinates from map events
+    // signal to accept coordinates from map events
     let map_click_signal = create_rc_signal((String::new(), String::new()));
 
     // on map double click set new coordinates

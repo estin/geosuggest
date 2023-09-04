@@ -158,7 +158,7 @@ struct AlternateNamesRaw {
     geonameid: u32,
     isolanguage: String,
     alternate_name: String,
-    is_prefered_name: String,
+    is_preferred_name: String,
     is_short_name: String,
     is_colloquial: String,
     is_historic: String,
@@ -353,7 +353,7 @@ impl Engine {
 
         let nearest_limit = if countries.is_some() {
             // ugly hack try to fetch nearest cities in requested countries
-            // much better is ot build index for concreate countries
+            // much better is to build index for concrete countries
             self.geonames.len()
         } else {
             limit
@@ -716,7 +716,7 @@ impl Engine {
                             // skip short not preferred names for cities
                             if is_city_name
                                 && record.is_short_name == "1"
-                                && record.is_prefered_name != "1"
+                                && record.is_preferred_name != "1"
                             {
                                 continue;
                             }
@@ -739,7 +739,7 @@ impl Engine {
                                 // don't overwrite preferred name
                                 let is_current_prefered_name = item
                                     .get(&record.isolanguage)
-                                    .map(|i| i.is_prefered_name == "1")
+                                    .map(|i| i.is_preferred_name == "1")
                                     .unwrap_or(false);
 
                                 if !is_current_prefered_name {
@@ -822,7 +822,7 @@ impl Engine {
                 _ => {}
             };
 
-            // prevent dublicates
+            // prevent duplicates
             if geonames.contains_key(&record.geonameid) {
                 continue;
             }
