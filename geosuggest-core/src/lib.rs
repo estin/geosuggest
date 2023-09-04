@@ -315,7 +315,7 @@ impl Engine {
 
         // sort by score desc, population desc
         result.sort_by(|lhs, rhs| {
-            if lhs.1 == rhs.1 {
+            if (lhs.1 - rhs.1).abs() < f32::EPSILON {
                 rhs.0
                     .population
                     .partial_cmp(&lhs.0.population)
