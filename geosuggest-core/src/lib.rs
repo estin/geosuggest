@@ -374,7 +374,7 @@ impl Engine {
                 .map(|code| code.as_ref().to_uppercase())
                 .collect::<Vec<_>>();
 
-            i1 = items.into_iter().filter_map(move |nearest| {
+            i1 = items.iter_mut().filter_map(move |nearest| {
                 let city = self.geonames.get(&nearest.item)?;
                 let country = city.country.as_ref()?;
                 if countries.contains(&country.code) {
@@ -385,7 +385,7 @@ impl Engine {
             });
             &mut i1
         } else {
-            i2 = items.into_iter().filter_map(|nearest| {
+            i2 = items.iter_mut().filter_map(|nearest| {
                 let city = self.geonames.get(&nearest.item)?;
                 Some((nearest, city))
             });
