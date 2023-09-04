@@ -339,7 +339,7 @@ pub async fn geoip2(
                     ip
                 } else {
                     return HttpResponse::BadRequest().body(
-                        "IP address does't declared in request and fieled to get peer addr"
+                        "IP address is not declared in request and field to get peer addr"
                             .to_string(),
                     );
                 }
@@ -347,7 +347,7 @@ pub async fn geoip2(
                 peer_addr.ip()
             } else {
                 return HttpResponse::BadRequest().body(
-                    "IP address does't declared in request and fieled to get peer addr".to_string(),
+                    "IP address is not declared in request and field to get peer addr".to_string(),
                 );
             }
         }
