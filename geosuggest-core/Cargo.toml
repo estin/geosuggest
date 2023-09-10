@@ -1,6 +1,6 @@
 [package]
 name = "geosuggest-core"
-version = "0.4.2"
+version = "0.4.3"
 authors = ["geosuggest contributors"]
 description = "Suggest by name or find nearest by coordinates cities"
 readme = "README.md"
