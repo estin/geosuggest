@@ -26,6 +26,8 @@ async fn main() -> Result<()> {
         "Reverse result: {:#?}",
         engine.reverse::<&str>((11.138298, 57.510973), 1, None, None)
     );
+    tracing::info!("Country info: {:#?}", engine.country_info("RS"));
+    tracing::info!("Capital info: {:#?}", engine.capital("GB"));
 
     Ok(())
 }

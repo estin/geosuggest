@@ -117,27 +117,39 @@ struct CitiesRecordRaw {
 // CounntryInfo
 // http://download.geonames.org/export/dump/countryInfo.txt
 // ISO	ISO3	ISO-Numeric	fips	Country	Capital	Area(in sq km)	Population	Continent	tld	CurrencyCode	CurrencyName	Phone	Postal Code Format	Postal Code Regex	Languages	geonameid	neighbours	EquivalentFipsCode
-#[derive(Debug, Deserialize)]
-struct CountryInfoRaw {
-    iso: String,
-    _iso3: String,
-    _iso_numeric: String,
-    _fips: String,
-    name: String,
-    _capital: String,
-    _area: String,
-    _population: u32,
-    _continent: String,
-    _tld: String,
-    _currency_code: String,
-    _currency_name: String,
-    _phone: String,
-    _postal_code_format: String,
-    _postal_code_regex: String,
-    _languages: String,
-    geonameid: u32,
-    _neighbours: String,
-    _equivalent_fips_code: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountryRecordRaw {
+    pub iso: String,
+    pub iso3: String,
+    pub iso_numeric: String,
+    pub fips: String,
+    pub name: String,
+    pub capital: String,
+    pub area: String,
+    pub population: u32,
+    pub continent: String,
+    pub tld: String,
+    pub currency_code: String,
+    pub currency_name: String,
+    pub phone: String,
+    pub postal_code_format: String,
+    pub postal_code_regex: String,
+    pub languages: String,
+    pub geonameid: u32,
+    pub neighbours: String,
+    pub equivalent_fips_code: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountryRecord {
+    /// geonames country info
+    pub info: CountryRecordRaw,
+
+    /// Country name translation
+    pub names: Option<HashMap<String, String>>,
+
+    /// Capital name translation
+    pub capital_names: Option<HashMap<String, String>>,
 }
 
 // The table 'alternate names' :
@@ -174,6 +186,16 @@ pub struct Country {
     pub name: String,
 }
 
+impl From<&CountryRecordRaw> for Country {
+    fn from(c: &CountryRecordRaw) -> Self {
+        Country {
+            id: c.geonameid,
+            code: c.iso.clone(),
+            name: c.name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
 pub struct CitiesRecord {
@@ -186,6 +208,7 @@ pub struct CitiesRecord {
     pub admin2_division: Option<AdminDivision>,
     pub timezone: String,
     pub names: Option<HashMap<String, String>>,
+    // todo try resuse country info
     pub country_names: Option<HashMap<String, String>>,
     pub admin1_names: Option<HashMap<String, String>>,
     pub admin2_names: Option<HashMap<String, String>>,
@@ -206,7 +229,7 @@ struct EngineDump {
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
     capitals: HashMap<String, u32>,
-    country_id_by_code: HashMap<String, u32>,
+    country_info_by_code: HashMap<String, CountryRecord>,
 }
 
 #[derive(Debug, Default)]
@@ -229,7 +252,7 @@ pub struct Engine {
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
     capitals: HashMap<String, u32>,
-    country_id_by_code: HashMap<String, u32>,
+    country_info_by_code: HashMap<String, CountryRecord>,
 
     #[serde(skip_serializing)]
     tree: KdTree<f32, u32, 2, 32, u16>,
@@ -249,7 +272,7 @@ impl Engine {
     }
 
     pub fn capital(&self, country_code: &str) -> Option<&CitiesRecord> {
-        if let Some(city_id) = self.capitals.get(&country_code.to_lowercase()) {
+        if let Some(city_id) = self.capitals.get(&country_code.to_uppercase()) {
             self.get(city_id)
         } else {
             None
@@ -292,7 +315,11 @@ impl Engine {
             Some(countries) => {
                 let country_ids = countries
                     .iter()
-                    .filter_map(|code| self.country_id_by_code.get(&code.as_ref().to_uppercase()))
+                    .filter_map(|code| {
+                        self.country_info_by_code
+                            .get(&code.as_ref().to_uppercase())
+                            .map(|c| &c.info.geonameid)
+                    })
                     .collect::<Vec<&u32>>();
                 self.entries
                     .par_iter()
@@ -430,6 +457,11 @@ impl Engine {
         }
     }
 
+    /// Get country info by iso 2-letter country code.
+    pub fn country_info(&self, country_code: &str) -> Option<&CountryRecord> {
+        self.country_info_by_code.get(&country_code.to_uppercase())
+    }
+
     pub fn new_from_files<P: AsRef<std::path::Path>>(
         SourceFileOptions {
             cities,
@@ -516,7 +548,7 @@ impl Engine {
         );
 
         // load country info
-        let country_by_code: Option<HashMap<String, Country>> = match countries {
+        let country_by_code: Option<HashMap<String, CountryRecordRaw>> = match countries {
             Some(contents) => {
                 #[cfg(feature = "tracing")]
                 let now = Instant::now();
@@ -531,7 +563,7 @@ impl Engine {
                 let countries = rdr
                     .deserialize()
                     .filter_map(|row| {
-                        let record: CountryInfoRaw = row
+                        let record: CountryRecordRaw = row
                             .map_err(|e| {
                                 #[cfg(feature = "tracing")]
                                 tracing::error!("On read country row: {e}");
@@ -539,16 +571,9 @@ impl Engine {
                                 e
                             })
                             .ok()?;
-                        Some((
-                            record.iso.clone(),
-                            Country {
-                                id: record.geonameid,
-                                code: record.iso,
-                                name: record.name,
-                            },
-                        ))
+                        Some((record.iso.clone(), record))
                     })
-                    .collect::<HashMap<String, Country>>();
+                    .collect::<HashMap<String, CountryRecordRaw>>();
 
                 #[cfg(feature = "tracing")]
                 tracing::info!(
@@ -652,7 +677,7 @@ impl Engine {
                 let country_geoids = if let Some(ref country_by_code) = country_by_code {
                     country_by_code
                         .values()
-                        .map(|item| item.id)
+                        .map(|item| item.geonameid)
                         .collect::<HashSet<u32>>()
                 } else {
                     HashSet::<u32>::new()
@@ -690,8 +715,11 @@ impl Engine {
                             HashMap::new();
 
                         for row in rdr.deserialize() {
-                            let record: AlternateNamesRaw =
-                                if let Ok(r) = row { r } else { continue };
+                            let record: AlternateNamesRaw = if let Ok(r) = row {
+                                r
+                            } else {
+                                continue;
+                            };
 
                             let is_city_name = city_geoids.contains(&record.geonameid);
                             let mut skip = !is_city_name;
@@ -822,6 +850,8 @@ impl Engine {
                 _ => {}
             };
 
+            let is_capital = feature_code == "PPLC";
+
             // prevent duplicates
             if geonames.contains_key(&record.geonameid) {
                 continue;
@@ -831,7 +861,7 @@ impl Engine {
 
             let country_id = country_by_code
                 .as_ref()
-                .and_then(|m| m.get(&record.country_code).map(|c| c.id));
+                .and_then(|m| m.get(&record.country_code).map(|c| c.geonameid));
 
             entries.push(Entry {
                 id: record.geonameid,
@@ -856,11 +886,8 @@ impl Engine {
             }
 
             let country = if let Some(ref c) = country_by_code {
-                if feature_code == "PPLC" {
-                    capitals.insert(
-                        record.country_code.to_lowercase().to_string(),
-                        record.geonameid,
-                    );
+                if is_capital {
+                    capitals.insert(record.country_code.to_string(), record.geonameid);
                 }
                 c.get(&record.country_code).cloned()
             } else {
@@ -869,7 +896,7 @@ impl Engine {
 
             let country_names = if let Some(ref c) = country {
                 match names_by_id {
-                    Some(ref names) => names.get(&c.id).cloned(),
+                    Some(ref names) => names.get(&c.geonameid).cloned(),
                     None => None,
                 }
             } else {
@@ -916,14 +943,21 @@ impl Engine {
                 CitiesRecord {
                     id: record.geonameid,
                     name: record.name,
-                    country,
+                    country: country.as_ref().map(Country::from),
                     admin_division,
                     admin2_division,
                     latitude: record.latitude,
                     longitude: record.longitude,
                     timezone: record.timezone,
                     names: match names_by_id {
-                        Some(ref mut names) => names.remove(&record.geonameid),
+                        Some(ref mut names) => {
+                            if is_capital {
+                                names.get(&record.geonameid).cloned()
+                            } else {
+                                // don't hold unsed data
+                                names.remove(&record.geonameid)
+                            }
+                        }
                         None => None,
                     },
                     country_names,
@@ -937,18 +971,33 @@ impl Engine {
         let engine = Engine {
             source_etag,
             geonames,
-            capitals,
             tree,
             entries,
-            country_id_by_code: if let Some(country_by_code) = country_by_code {
-                HashMap::from_iter(
-                    country_by_code
-                        .into_iter()
-                        .map(|(code, country)| (code, country.id)),
-                )
+            country_info_by_code: if let Some(country_by_code) = country_by_code {
+                HashMap::from_iter(country_by_code.into_iter().map(|(code, country)| {
+                    let country_record = CountryRecord {
+                        names: names_by_id
+                            .as_ref()
+                            .and_then(|names| names.get(&country.geonameid).cloned()),
+                        capital_names: match names_by_id {
+                            Some(ref names) => {
+                                if let Some(city_id) = capitals.get(&country.iso) {
+                                    names.get(city_id).cloned()
+                                } else {
+                                    None
+                                }
+                            }
+                            None => None,
+                        },
+                        info: country,
+                    };
+
+                    (code, country_record)
+                }))
             } else {
                 HashMap::new()
             },
+            capitals,
             #[cfg(feature = "geoip2_support")]
             geoip2_reader: None,
         };
@@ -1029,7 +1078,7 @@ impl Engine {
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
             capitals: engine_dump.capitals,
-            country_id_by_code: engine_dump.country_id_by_code,
+            country_info_by_code: engine_dump.country_info_by_code,
             tree,
             #[cfg(feature = "geoip2_support")]
             geoip2_reader: None,

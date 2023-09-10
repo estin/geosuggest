@@ -8,7 +8,7 @@ use std::sync::Arc;
 fn app_config(cfg: &mut ServiceConfig) {
     let mut engine = Engine::new_from_files(
         SourceFileOptions {
-            cities: "../geosuggest-core/tests/misc/cities-ru.txt",
+            cities: "../geosuggest-core/tests/misc/cities.txt",
             names: Some("../geosuggest-core/tests/misc/names.txt"),
             countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
             filter_languages: vec!["ru"],

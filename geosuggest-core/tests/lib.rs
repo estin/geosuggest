@@ -10,13 +10,14 @@ fn get_engine(
     cities: Option<&str>,
     names: Option<&str>,
     countries: Option<&str>,
+    filter_languages: Vec<&str>,
 ) -> Result<geosuggest_core::Engine, Box<dyn Error>> {
     Engine::new_from_files(
         SourceFileOptions {
-            cities: cities.unwrap_or("tests/misc/cities-ru.txt"),
+            cities: cities.unwrap_or("tests/misc/cities.txt"),
             names: Some(names.unwrap_or("tests/misc/names.txt")),
             countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
-            filter_languages: vec![],
+            filter_languages,
             admin1_codes: Some("tests/misc/admin1-codes.txt"),
             admin2_codes: Some("tests/misc/admin2-codes.txt"),
         },
@@ -26,7 +27,7 @@ fn get_engine(
 
 #[test_log::test]
 fn suggest() -> Result<(), Box<dyn Error>> {
-    let engine = get_engine(None, None, None)?;
+    let engine = get_engine(None, None, None, vec![])?;
 
     let items = engine.suggest::<&str>("voronezh", 1, None, None);
     assert_eq!(items.len(), 1);
@@ -53,7 +54,7 @@ fn suggest() -> Result<(), Box<dyn Error>> {
 
 #[test_log::test]
 fn reverse() -> Result<(), Box<dyn Error>> {
-    let engine = get_engine(None, None, None)?;
+    let engine = get_engine(None, None, None, vec![])?;
     let result = engine.reverse::<&str>((51.6372, 39.1937), 1, None, None);
     assert!(result.is_some());
     let items = result.unwrap();
@@ -86,7 +87,7 @@ fn reverse() -> Result<(), Box<dyn Error>> {
 
 #[test_log::test]
 fn capital() -> Result<(), Box<dyn Error>> {
-    let engine = get_engine(None, None, None)?;
+    let engine = get_engine(None, None, None, vec![])?;
     let result = engine.capital("RU");
     assert!(result.is_some());
     let city = result.unwrap();
@@ -98,7 +99,7 @@ fn capital() -> Result<(), Box<dyn Error>> {
 #[test_log::test]
 #[cfg(feature = "geoip2_support")]
 fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
-    let mut engine = get_engine(None, None, None)?;
+    let mut engine = get_engine(None, None, None, vec![])?;
     engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
     let result = engine.geoip2_lookup(IpAddr::from_str("81.2.69.142")?);
     assert!(result.is_some());
@@ -111,7 +112,7 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
 #[test_log::test]
 fn build_dump_load() -> Result<(), Box<dyn Error>> {
     // build
-    let engine = get_engine(None, None, None)?;
+    let engine = get_engine(None, None, None, vec![])?;
 
     // dump
     engine.dump_to(
@@ -145,7 +146,7 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
 
 #[test_log::test]
 fn population_weight() -> Result<(), Box<dyn Error>> {
-    let engine = get_engine(Some("tests/misc/population-weight.txt"), None, None)?;
+    let engine = get_engine(Some("tests/misc/population-weight.txt"), None, None, vec![])?;
 
     let population_weight = 0.000000005;
 
@@ -190,6 +191,32 @@ fn population_weight() -> Result<(), Box<dyn Error>> {
     tracing::trace!("Reverse result: {:#?}", items);
     assert_eq!(items.len(), 3);
     assert_eq!(items[0].city.name, "Lyubertsy");
+
+    Ok(())
+}
+
+#[test_log::test]
+fn country_info() -> Result<(), Box<dyn Error>> {
+    let engine = get_engine(None, None, None, vec!["ru", "sr"])?;
+
+    let country1 = engine.country_info("rs").unwrap();
+    let country2 = engine.country_info("RS").unwrap();
+
+    println!("country {country1:#?}");
+    engine
+        .dump_to("/tmp/engine.json", EngineDumpFormat::Json)
+        .unwrap();
+
+    assert_eq!(country1.info.geonameid, country2.info.geonameid);
+    assert_eq!(country1.info.name, "Serbia");
+    assert_eq!(
+        country1.names.as_ref().unwrap().get("ru").unwrap(),
+        "Сербия"
+    );
+    assert_eq!(
+        country1.capital_names.as_ref().unwrap().get("ru").unwrap(),
+        "Белград"
+    );
 
     Ok(())
 }
