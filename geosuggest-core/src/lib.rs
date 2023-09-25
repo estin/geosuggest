@@ -208,7 +208,7 @@ pub struct CitiesRecord {
     pub admin2_division: Option<AdminDivision>,
     pub timezone: String,
     pub names: Option<HashMap<String, String>>,
-    // todo try resuse country info
+    // todo try reuse country info
     pub country_names: Option<HashMap<String, String>>,
     pub admin1_names: Option<HashMap<String, String>>,
     pub admin2_names: Option<HashMap<String, String>>,
@@ -765,12 +765,12 @@ impl Engine {
 
                             if let Some(item) = names_by_id.get_mut(&record.geonameid) {
                                 // don't overwrite preferred name
-                                let is_current_prefered_name = item
+                                let is_current_preferred_name = item
                                     .get(&record.isolanguage)
                                     .map(|i| i.is_preferred_name == "1")
                                     .unwrap_or(false);
 
-                                if !is_current_prefered_name {
+                                if !is_current_preferred_name {
                                     item.insert(lang, record);
                                 }
                             } else {
@@ -954,7 +954,7 @@ impl Engine {
                             if is_capital {
                                 names.get(&record.geonameid).cloned()
                             } else {
-                                // don't hold unsed data
+                                // don't hold unused data
                                 names.remove(&record.geonameid)
                             }
                         }

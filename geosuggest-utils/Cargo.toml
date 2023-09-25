@@ -31,6 +31,7 @@ tracing-subscriber = { workspace = true, optional = true }
 anyhow.workspace = true
 zip.workspace = true
 reqwest.workspace = true
+serde.workspace = true
 tokio.workspace = true
 futures.workspace = true
 clap = { workspace = true, optional = true }
