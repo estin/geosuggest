@@ -4,12 +4,15 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
 use geosuggest_core::{Engine, SourceFileContentOptions};
+use serde::Serialize;
 
+#[derive(Serialize, Clone)]
 pub struct SourceItem<'a> {
     pub url: &'a str,
     pub filename: &'a str,
 }
 
+#[derive(Serialize, Clone)]
 pub struct IndexUpdaterSettings<'a> {
     pub http_timeout_ms: u64,
     pub cities: SourceItem<'a>,
@@ -82,7 +85,7 @@ impl<'a> IndexUpdater<'a> {
         let responses = futures::future::join_all(requests).await;
         let results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
-        for (entry, etag) in results.into_iter() {
+        for (entry, etag) in results {
             let current_etag = engine
                 .source_etag
                 .get(entry)
@@ -176,9 +179,7 @@ impl<'a> IndexUpdater<'a> {
         let source_etag = results
             .iter()
             .filter_map(|(k, v)| {
-                let Ok((etag, _)) = v else {
-                return None
-            };
+                let Ok((etag, _)) = v else { return None };
                 Some(((*k).to_string(), etag.to_string()))
             })
             .collect();
