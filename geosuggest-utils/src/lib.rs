@@ -85,7 +85,7 @@ impl<'a> IndexUpdater<'a> {
         let responses = futures::future::join_all(requests).await;
         let results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
-        for (entry, etag) in results.into_iter() {
+        for (entry, etag) in results {
             let current_etag = engine
                 .source_etag
                 .get(entry)
