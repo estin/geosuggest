@@ -179,9 +179,7 @@ impl<'a> IndexUpdater<'a> {
         let source_etag = results
             .iter()
             .filter_map(|(k, v)| {
-                let Ok((etag, _)) = v else {
-                return None
-            };
+                let Ok((etag, _)) = v else { return None };
                 Some(((*k).to_string(), etag.to_string()))
             })
             .collect();
