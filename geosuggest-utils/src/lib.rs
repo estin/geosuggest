@@ -4,12 +4,15 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
 use geosuggest_core::{Engine, SourceFileContentOptions};
+use serde::Serialize;
 
+#[derive(Serialize, Clone)]
 pub struct SourceItem<'a> {
     pub url: &'a str,
     pub filename: &'a str,
 }
 
+#[derive(Serialize, Clone)]
 pub struct IndexUpdaterSettings<'a> {
     pub http_timeout_ms: u64,
     pub cities: SourceItem<'a>,
