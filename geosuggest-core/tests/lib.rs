@@ -1,5 +1,7 @@
-use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
-use std::collections::HashMap;
+use geosuggest_core::{
+    storage::{self, IndexStorage},
+    Engine, EngineMetadata, SourceFileOptions,
+};
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
@@ -12,17 +14,16 @@ fn get_engine(
     countries: Option<&str>,
     filter_languages: Vec<&str>,
 ) -> Result<geosuggest_core::Engine, Box<dyn Error>> {
-    Engine::new_from_files(
-        SourceFileOptions {
-            cities: cities.unwrap_or("tests/misc/cities.txt"),
-            names: Some(names.unwrap_or("tests/misc/names.txt")),
-            countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
-            filter_languages,
-            admin1_codes: Some("tests/misc/admin1-codes.txt"),
-            admin2_codes: Some("tests/misc/admin2-codes.txt"),
-        },
-        HashMap::new(),
-    )
+    let mut engine = Engine::new_from_files(SourceFileOptions {
+        cities: cities.unwrap_or("tests/misc/cities.txt"),
+        names: Some(names.unwrap_or("tests/misc/names.txt")),
+        countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
+        filter_languages,
+        admin1_codes: Some("tests/misc/admin1-codes.txt"),
+        admin2_codes: Some("tests/misc/admin2-codes.txt"),
+    })?;
+    engine.metadata = Some(EngineMetadata::default());
+    Ok(engine)
 }
 
 #[test_log::test]
@@ -110,21 +111,56 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
 }
 
 #[test_log::test]
-fn build_dump_load() -> Result<(), Box<dyn Error>> {
+fn json_build_dump_load() -> Result<(), Box<dyn Error>> {
+    let filepath = temp_dir().join("test-engine.json");
+    let storage = storage::json::Storage::new();
     // build
     let engine = get_engine(None, None, None, vec![])?;
 
     // dump
-    engine.dump_to(
-        temp_dir().join("test-engine.json"),
-        EngineDumpFormat::default(),
-    )?;
+    storage.dump_to(&filepath, &engine)?;
+
+    // check metdata
+    let metadata = storage.read_metadata(&filepath)?;
+    assert!(metadata.is_some());
 
     // load
-    let from_dump = Engine::load_from(
-        temp_dir().join("test-engine.json"),
-        EngineDumpFormat::default(),
-    )?;
+    let from_dump = storage.load_from(&filepath)?;
+
+    assert_eq!(
+        engine.suggest::<&str>("voronezh", 100, None, None).len(),
+        from_dump.suggest::<&str>("voronezh", 100, None, None).len(),
+    );
+
+    let coords = (51.6372, 39.1937);
+    assert_eq!(
+        engine.reverse::<&str>(coords, 1, None, None).unwrap()[0]
+            .city
+            .id,
+        from_dump.reverse::<&str>(coords, 1, None, None).unwrap()[0]
+            .city
+            .id,
+    );
+
+    Ok(())
+}
+
+#[test_log::test]
+fn bincode_build_dump_load() -> Result<(), Box<dyn Error>> {
+    let filepath = temp_dir().join("test-engine.bincode");
+    let storage = storage::bincode::Storage::new();
+    // build
+    let engine = get_engine(None, None, None, vec![])?;
+
+    // dump
+    storage.dump_to(&filepath, &engine)?;
+
+    // check metdata
+    let metadata = storage.read_metadata(&filepath)?;
+    assert!(metadata.is_some());
+
+    // load
+    let from_dump = storage.load_from(&filepath)?;
 
     assert_eq!(
         engine.suggest::<&str>("voronezh", 100, None, None).len(),
@@ -201,11 +237,6 @@ fn country_info() -> Result<(), Box<dyn Error>> {
 
     let country1 = engine.country_info("rs").unwrap();
     let country2 = engine.country_info("RS").unwrap();
-
-    println!("country {country1:#?}");
-    engine
-        .dump_to("/tmp/engine.json", EngineDumpFormat::Json)
-        .unwrap();
 
     assert_eq!(country1.info.geonameid, country2.info.geonameid);
     assert_eq!(country1.info.name, "Serbia");

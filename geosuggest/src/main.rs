@@ -15,7 +15,10 @@ use ntex_cors::Cors;
 use ntex_files as fs;
 use serde::{Deserialize, Serialize};
 
-use geosuggest_core::{CitiesRecord, Engine, EngineDumpFormat};
+use geosuggest_core::{
+    storage::{self, IndexStorage},
+    CitiesRecord, Engine,
+};
 
 // openapi3
 use oaph::{
@@ -437,7 +440,10 @@ async fn main() -> std::io::Result<()> {
         panic!("Please set `index_file`");
     }
 
-    let mut engine = Engine::load_from(&settings.index_file, EngineDumpFormat::default())
+    let storage = storage::bincode::Storage::new();
+
+    let mut engine = storage
+        .load_from(&settings.index_file)
         .unwrap_or_else(|e| panic!("On build engine from file: {} - {}", settings.index_file, e));
 
     #[cfg(feature = "geoip2_support")]

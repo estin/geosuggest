@@ -1,7 +1,10 @@
 use anyhow::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{Engine, EngineDumpFormat};
+use geosuggest_core::{
+    storage::{self, IndexStorage},
+    Engine,
+};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
@@ -16,6 +19,7 @@ async fn main() -> Result<()> {
 
     // build/load/update index
     let engine = load_engine().await?;
+    tracing::info!("Index metadata: {:#?}", engine.metadata);
 
     // use
     tracing::info!(
@@ -40,23 +44,32 @@ async fn load_engine() -> Result<Engine> {
         ..Default::default()
     })?;
 
+    let storage = storage::bincode::Storage::new();
+
     Ok(if index_file.exists() {
         // load existed index
-        let engine = Engine::load_from(index_file, EngineDumpFormat::Bincode)
-            .map_err(|e| anyhow::anyhow!("On load index file: {e}"))?;
+        let metadata = storage
+            .read_metadata(index_file)
+            .map_err(|e| anyhow::anyhow!("On load index metadata from {index_file:?}: {e}"))?;
 
-        if updater.has_updates(&engine).await? {
-            // rewrite index file
-            let engine = updater.build().await?;
-            engine.dump_to(index_file, EngineDumpFormat::Bincode)?;
-            engine
-        } else {
-            engine
+        match metadata {
+            Some(m) if updater.has_updates(&m).await? => {
+                let engine = updater.build().await?;
+                storage
+                    .dump_to(index_file, &engine)
+                    .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
+                engine
+            }
+            _ => storage
+                .load_from(index_file)
+                .map_err(|e| anyhow::anyhow!("On load index from {index_file:?}: {e}"))?,
         }
     } else {
         // initial
         let engine = updater.build().await?;
-        engine.dump_to(index_file, EngineDumpFormat::Bincode)?;
+        storage
+            .dump_to(index_file, &engine)
+            .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
         engine
     })
 }

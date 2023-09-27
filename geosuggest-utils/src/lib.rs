@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
-use geosuggest_core::{Engine, SourceFileContentOptions};
+use geosuggest_core::{Engine, EngineMetadata, EngineSourceMetadata, SourceFileContentOptions};
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -59,10 +59,10 @@ impl<'a> IndexUpdater<'a> {
         })
     }
 
-    pub async fn has_updates(&self, engine: &Engine) -> Result<bool> {
+    pub async fn has_updates(&self, metadata: &EngineMetadata) -> Result<bool> {
         #[cfg(feature = "tracing")]
         tracing::info!("Check updates");
-        if engine.source_etag.is_empty() {
+        if metadata.source.etag.is_empty() {
             #[cfg(feature = "tracing")]
             tracing::info!("Engine hasn't source ETAGs");
             return Ok(true);
@@ -86,8 +86,9 @@ impl<'a> IndexUpdater<'a> {
         let results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
         for (entry, etag) in results {
-            let current_etag = engine
-                .source_etag
+            let current_etag = metadata
+                .source
+                .etag
                 .get(entry)
                 .map(AsRef::as_ref)
                 .unwrap_or("");
@@ -176,7 +177,7 @@ impl<'a> IndexUpdater<'a> {
         let responses = futures::future::join_all(requests).await;
         let mut results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
 
-        let source_etag = results
+        let etag = results
             .iter()
             .filter_map(|(k, v)| {
                 let Ok((etag, _)) = v else { return None };
@@ -187,39 +188,56 @@ impl<'a> IndexUpdater<'a> {
         #[cfg(feature = "tracing")]
         tracing::info!("Try to build index...");
 
-        Engine::new_from_files_content(
-            SourceFileContentOptions {
-                cities: String::from_utf8(
-                    results
-                        .remove(&"cities")
-                        .ok_or_else(|| anyhow::anyhow!("Cities file required"))?
-                        .map_err(|e| anyhow::anyhow!("On fetch cities file: {e}"))?
-                        .1, // .ok_or_else(|| anyhow::anyhow!("Cities file required"))?,
-                )?,
-                names: if let Some(c) = results.remove(&"names") {
-                    Some(String::from_utf8(c?.1)?)
-                } else {
-                    None
-                },
-                countries: if let Some(c) = results.remove(&"countries") {
-                    Some(String::from_utf8(c?.1)?)
-                } else {
-                    None
-                },
-                admin1_codes: if let Some(c) = results.remove(&"admin1_codes") {
-                    Some(String::from_utf8(c?.1)?)
-                } else {
-                    None
-                },
-                admin2_codes: if let Some(c) = results.remove(&"admin2_codes") {
-                    Some(String::from_utf8(c?.1)?)
-                } else {
-                    None
-                },
-                filter_languages: self.settings.filter_languages,
+        let mut engine = Engine::new_from_files_content(SourceFileContentOptions {
+            cities: String::from_utf8(
+                results
+                    .remove(&"cities")
+                    .ok_or_else(|| anyhow::anyhow!("Cities file required"))?
+                    .map_err(|e| anyhow::anyhow!("On fetch cities file: {e}"))?
+                    .1, // .ok_or_else(|| anyhow::anyhow!("Cities file required"))?,
+            )?,
+            names: if let Some(c) = results.remove(&"names") {
+                Some(String::from_utf8(c?.1)?)
+            } else {
+                None
             },
-            source_etag,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))
+            countries: if let Some(c) = results.remove(&"countries") {
+                Some(String::from_utf8(c?.1)?)
+            } else {
+                None
+            },
+            admin1_codes: if let Some(c) = results.remove(&"admin1_codes") {
+                Some(String::from_utf8(c?.1)?)
+            } else {
+                None
+            },
+            admin2_codes: if let Some(c) = results.remove(&"admin2_codes") {
+                Some(String::from_utf8(c?.1)?)
+            } else {
+                None
+            },
+            filter_languages: self.settings.filter_languages.clone(),
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
+
+        engine.metadata = Some(EngineMetadata {
+            source: EngineSourceMetadata {
+                cities: self.settings.cities.url.to_owned(),
+                names: self.settings.names.as_ref().map(|v| v.url.to_owned()),
+                countries: self.settings.countries_url.map(String::from),
+                admin1_codes: self.settings.admin1_codes_url.map(String::from),
+                admin2_codes: self.settings.admin2_codes_url.map(String::from),
+                filter_languages: self
+                    .settings
+                    .filter_languages
+                    .into_iter()
+                    .map(String::from)
+                    .collect::<Vec<_>>(),
+                etag,
+            },
+            ..Default::default()
+        });
+
+        Ok(engine)
     }
 }

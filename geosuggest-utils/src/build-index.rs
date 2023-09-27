@@ -1,9 +1,11 @@
 use anyhow::Result;
-use std::collections::HashMap;
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{Engine, EngineDumpFormat, SourceFileOptions};
+use geosuggest_core::{
+    storage::{self, IndexStorage},
+    Engine, SourceFileOptions,
+};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings, SourceItem};
 
 use clap::Parser;
@@ -142,28 +144,29 @@ async fn main() -> Result<()> {
                 .await
                 .expect("On build index");
 
-            engine.dump_to(&args.output, EngineDumpFormat::Bincode)?;
+            storage::bincode::Storage::new()
+                .dump_to(&args.output, &engine)
+                .map_err(|e| anyhow::anyhow!("Failed to dump index: {e}"))?;
         }
 
         Args::FromFiles(args) => {
-            let engine = Engine::new_from_files(
-                SourceFileOptions {
-                    cities: args.cities,
-                    names: args.names,
-                    countries: args.countries,
-                    admin1_codes: args.admin_codes,
-                    admin2_codes: args.admin2_codes,
-                    filter_languages: if let Some(languages) = &args.languages {
-                        languages.split(',').map(AsRef::as_ref).collect()
-                    } else {
-                        Vec::new()
-                    },
+            let engine = Engine::new_from_files(SourceFileOptions {
+                cities: args.cities,
+                names: args.names,
+                countries: args.countries,
+                admin1_codes: args.admin_codes,
+                admin2_codes: args.admin2_codes,
+                filter_languages: if let Some(languages) = &args.languages {
+                    languages.split(',').map(AsRef::as_ref).collect()
+                } else {
+                    Vec::new()
                 },
-                HashMap::new(),
-            )
+            })
             .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
-            engine.dump_to(&args.output, EngineDumpFormat::Bincode)?;
+            storage::bincode::Storage::new()
+                .dump_to(&args.output, &engine)
+                .map_err(|e| anyhow::anyhow!("Failed to dump index: {e}"))?;
         }
     };
 

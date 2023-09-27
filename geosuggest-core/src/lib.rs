@@ -25,6 +25,8 @@ use geoip2::{City, Reader};
 #[cfg(feature = "oaph_support")]
 use oaph::schemars::{self, JsonSchema};
 
+pub mod storage;
+
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
     pub names: Option<P>,
@@ -223,20 +225,47 @@ pub struct ReverseItem<'a> {
     pub score: f32,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct EngineSourceMetadata {
+    pub cities: String,
+    pub names: Option<String>,
+    pub countries: Option<String>,
+    pub admin1_codes: Option<String>,
+    pub admin2_codes: Option<String>,
+    pub filter_languages: Vec<String>,
+    pub etag: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EngineMetadata {
+    /// Index was built on version
+    pub geosuggest_version: String,
+    /// Creation time
+    pub created_at: std::time::SystemTime,
+    /// Sources metadata
+    pub source: EngineSourceMetadata,
+    /// Custom metadata info
+    pub extra: HashMap<String, String>,
+}
+
+impl Default for EngineMetadata {
+    fn default() -> Self {
+        Self {
+            created_at: std::time::SystemTime::now(),
+            geosuggest_version: env!("CARGO_PKG_VERSION").to_owned(),
+            source: EngineSourceMetadata::default(),
+            extra: HashMap::default(),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct EngineDump {
-    source_etag: HashMap<String, String>,
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
     capitals: HashMap<String, u32>,
     country_info_by_code: HashMap<String, CountryRecord>,
-}
-
-#[derive(Debug, Default)]
-pub enum EngineDumpFormat {
-    Json,
-    #[default]
-    Bincode,
+    metadata: Option<EngineMetadata>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -248,11 +277,11 @@ struct Entry {
 
 #[derive(Serialize)]
 pub struct Engine {
-    pub source_etag: HashMap<String, String>,
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
     capitals: HashMap<String, u32>,
     country_info_by_code: HashMap<String, CountryRecord>,
+    pub metadata: Option<EngineMetadata>,
 
     #[serde(skip_serializing)]
     tree: KdTree<f32, u32, 2, 32, u16>,
@@ -471,35 +500,31 @@ impl Engine {
             admin1_codes,
             admin2_codes,
         }: SourceFileOptions<P>,
-        source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
-        Engine::new_from_files_content(
-            SourceFileContentOptions {
-                cities: std::fs::read_to_string(cities)?,
-                names: if let Some(p) = names {
-                    Some(std::fs::read_to_string(p)?)
-                } else {
-                    None
-                },
-                countries: if let Some(p) = countries {
-                    Some(std::fs::read_to_string(p)?)
-                } else {
-                    None
-                },
-                admin1_codes: if let Some(p) = admin1_codes {
-                    Some(std::fs::read_to_string(p)?)
-                } else {
-                    None
-                },
-                admin2_codes: if let Some(p) = admin2_codes {
-                    Some(std::fs::read_to_string(p)?)
-                } else {
-                    None
-                },
-                filter_languages,
+        Engine::new_from_files_content(SourceFileContentOptions {
+            cities: std::fs::read_to_string(cities)?,
+            names: if let Some(p) = names {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
             },
-            source_etag,
-        )
+            countries: if let Some(p) = countries {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
+            },
+            admin1_codes: if let Some(p) = admin1_codes {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
+            },
+            admin2_codes: if let Some(p) = admin2_codes {
+                Some(std::fs::read_to_string(p)?)
+            } else {
+                None
+            },
+            filter_languages,
+        })
     }
 
     pub fn new_from_files_content(
@@ -511,7 +536,6 @@ impl Engine {
             admin1_codes,
             admin2_codes,
         }: SourceFileContentOptions,
-        source_etag: HashMap<String, String>,
     ) -> Result<Self, Box<dyn Error>> {
         #[cfg(feature = "tracing")]
         let now = Instant::now();
@@ -969,10 +993,10 @@ impl Engine {
         }
 
         let engine = Engine {
-            source_etag,
             geonames,
             tree,
             entries,
+            metadata: None,
             country_info_by_code: if let Some(country_by_code) = country_by_code {
                 HashMap::from_iter(country_by_code.into_iter().map(|(code, country)| {
                     let country_record = CountryRecord {
@@ -1010,86 +1034,6 @@ impl Engine {
             engine.capitals.len(),
             now.elapsed().as_millis()
         );
-        Ok(engine)
-    }
-
-    pub fn dump_to<P: AsRef<std::path::Path>>(
-        &self,
-        path: P,
-        format: EngineDumpFormat,
-    ) -> std::io::Result<()> {
-        #[cfg(feature = "tracing")]
-        let now = Instant::now();
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&path)?;
-
-        match format {
-            EngineDumpFormat::Json => serde_json::to_writer(file, self)?,
-            EngineDumpFormat::Bincode => bincode::serialize_into(file, &self).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, format!("bincode: {}", e))
-            })?,
-        };
-
-        #[cfg(feature = "tracing")]
-        {
-            let metadata = std::fs::metadata(&path)?;
-
-            tracing::info!(
-                "Engine dump [{:?}] size: {} bytes. took {}ms",
-                format,
-                metadata.len(),
-                now.elapsed().as_millis(),
-            );
-        }
-
-        Ok(())
-    }
-
-    pub fn load_from<P: AsRef<std::path::Path>>(
-        path: P,
-        format: EngineDumpFormat,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        #[cfg(feature = "tracing")]
-        tracing::info!("Engine starts load index from file [{:?}]...", format);
-
-        #[cfg(feature = "tracing")]
-        let now = Instant::now();
-        let file = std::fs::OpenOptions::new()
-            .create(false)
-            .read(true)
-            .truncate(false)
-            .open(&path)?;
-
-        let engine_dump: EngineDump = match format {
-            EngineDumpFormat::Json => serde_json::from_reader(file)?,
-            EngineDumpFormat::Bincode => bincode::deserialize_from(file)?,
-        };
-
-        let mut tree = KdTree::new();
-        for (geonameid, record) in &engine_dump.geonames {
-            tree.add(&[record.latitude, record.longitude], *geonameid);
-        }
-
-        let engine = Engine {
-            source_etag: engine_dump.source_etag,
-            entries: engine_dump.entries,
-            geonames: engine_dump.geonames,
-            capitals: engine_dump.capitals,
-            country_info_by_code: engine_dump.country_info_by_code,
-            tree,
-            #[cfg(feature = "geoip2_support")]
-            geoip2_reader: None,
-        };
-
-        #[cfg(feature = "tracing")]
-        tracing::info!(
-            "Engine loaded from file. took {}ms",
-            now.elapsed().as_millis(),
-        );
-
         Ok(engine)
     }
 
@@ -1164,5 +1108,25 @@ impl std::fmt::Debug for GeoIP2Error {
 impl std::fmt::Display for GeoIP2Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "GeoIP2 Error {:?}", self.0)
+    }
+}
+
+impl From<EngineDump> for Engine {
+    fn from(engine_dump: EngineDump) -> Engine {
+        let mut tree = KdTree::new();
+        for (geonameid, record) in &engine_dump.geonames {
+            tree.add(&[record.latitude, record.longitude], *geonameid);
+        }
+
+        Engine {
+            entries: engine_dump.entries,
+            geonames: engine_dump.geonames,
+            capitals: engine_dump.capitals,
+            country_info_by_code: engine_dump.country_info_by_code,
+            tree,
+            metadata: engine_dump.metadata,
+            #[cfg(feature = "geoip2_support")]
+            geoip2_reader: None,
+        }
     }
 }
