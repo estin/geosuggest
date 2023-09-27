@@ -43,6 +43,4 @@ futures = "0.3"
 clap = { version = "4.3", features = ["derive"] }
 
 [patch.crates-io]
-ntex-files = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "1270f0c" }
-ntex-cors  = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "1270f0c" }
 oaph       = { git = "https://github.com/estin/oaph.git" }
