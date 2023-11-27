@@ -9,7 +9,8 @@ use itertools::Itertools;
 
 use kiddo::{
     self,
-    float::{distance::squared_euclidean, kdtree::KdTree},
+    float::kdtree::KdTree,
+    SquaredEuclidean,
 };
 
 use rayon::prelude::*;
@@ -420,7 +421,7 @@ impl Engine {
 
         let items = &mut self
             .tree
-            .nearest_n(&[loc.0, loc.1], nearest_limit, &squared_euclidean);
+            .nearest_n::<SquaredEuclidean>(&[loc.0, loc.1], nearest_limit);
 
         let items: &mut dyn Iterator<Item = (_, &CitiesRecord)> = if let Some(countries) = countries
         {
