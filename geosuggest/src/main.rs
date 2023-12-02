@@ -48,6 +48,12 @@ pub struct GetCapitalQuery {
     lang: Option<String>,
 }
 
+// TODO self.countries.split(",").as_slice()
+// https://github.com/rust-lang/rust/issues/96137
+fn get_countries_filter(countries: &Option<String>) -> Option<Vec<&str>> {
+    countries.as_deref().map(|c| c.split(',').collect())
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SuggestQuery {
     pattern: String,
@@ -56,8 +62,8 @@ pub struct SuggestQuery {
     lang: Option<String>,
     /// min score of Jaro Winkler similarity (by default 0.8)
     min_score: Option<f32>,
-    /// countries by 2-letter code to pre-filter search
-    countries: Option<Vec<String>>,
+    /// comma separated country code (2-letter) to pre-filter search
+    countries: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -73,8 +79,8 @@ pub struct ReverseQuery {
     /// neareset cities to apply distance correction coefficient by population
     /// by default 10
     nearest_limit: Option<usize>,
-    /// countries by 2-letter code to filter results
-    countries: Option<Vec<String>>,
+    /// comma separated country code (2-letter) to pre-filter search
+    countries: Option<String>,
 }
 
 #[cfg(feature = "geoip2_support")]
@@ -266,7 +272,7 @@ pub async fn suggest(
             query.pattern.as_str(),
             query.limit.unwrap_or(10),
             query.min_score,
-            query.countries.as_deref(),
+            get_countries_filter(&query.countries).as_deref(),
         )
         .iter()
         .map(|item| CityResultItem::from_city(item, query.lang.as_deref()))
@@ -290,7 +296,7 @@ pub async fn reverse(
             (query.lat, query.lng),
             query.nearest_limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT),
             Some(query.k.unwrap_or(DEFAULT_K)),
-            query.countries.as_deref(),
+            get_countries_filter(&query.countries).as_deref(),
         )
         .unwrap_or_default();
 

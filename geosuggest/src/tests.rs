@@ -123,7 +123,7 @@ async fn api_suggest() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
     let req = test::TestRequest::get()
-        .uri("/suggest?pattern=Voronezh")
+        .uri("/suggest?pattern=Voronezh&countries=ru,jp")
         .to_request();
     let resp = app.call(req).await.unwrap();
 
@@ -189,7 +189,7 @@ async fn api_reverse() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
     let req = test::TestRequest::get()
-        .uri("/reverse?lat=51.6372&lng=39.1937&limit=1")
+        .uri("/reverse?lat=51.6372&lng=39.1937&limit=1&countries=ru,jp")
         .to_request();
     let resp = app.call(req).await.unwrap();
 
@@ -378,6 +378,46 @@ async fn api_reverse_admin2_lang() -> Result<(), Error> {
             .unwrap(),
         "Ист-Райдинг-оф-Йоркшир"
     );
+
+    Ok(())
+}
+
+#[test_log::test(ntex::test)]
+async fn api_suggest_filter_by_countries() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/suggest?pattern=Voronezh&countries=jp,kr")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let items = result.get("items").unwrap().as_array().unwrap();
+    assert!(items.is_empty());
+
+    Ok(())
+}
+
+#[test_log::test(ntex::test)]
+async fn api_reverse_filter_by_countries() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/reverse?lat=51.6372&lng=39.1937&limit=1&countries=jp,kr")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let items = result.get("items").unwrap().as_array().unwrap();
+    assert!(items.is_empty());
 
     Ok(())
 }

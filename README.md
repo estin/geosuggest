@@ -12,7 +12,7 @@ Main features:
  - suggest city by name
  - find nearest city by coordinates
  - MaxMind GeoIP2(Lite) city database support
- - multilang (based on configured index options)
+ - multi-language (based on configured index options)
  - simple REST http [api](https://geosuggest.etatarkin.ru/swagger)
  - no external services used
 
@@ -65,6 +65,9 @@ Check
 
 ```bash
 $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
+```
+
+```json
 {
   "items": [
     {
