@@ -21,8 +21,8 @@ config     = "0.13"
 csv        = "1"
 rayon      = "1"
 strsim     = "0.10"
-kiddo      = "3.0"
-geoip2     = { version = "0.1.6" }
+kiddo      = "4.0"
+geoip2     = "0.1.6"
 
 bincode   = "1.3.3"
 itertools = "0.12"
