@@ -1,7 +1,7 @@
 [package]
 name = "geosuggest-core"
-version = "0.5.1"
-authors = ["geosuggest contributors"]
+version.workspace = true
+authors.workspace = true
 description = "Suggest by name or find nearest by coordinates cities"
 readme = "README.md"
 keywords = ["geocoding", "service"]

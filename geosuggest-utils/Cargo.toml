@@ -1,8 +1,8 @@
 [package]
 name = "geosuggest-utils"
-version = "0.5.1"
-authors = ["geosuggest contributors"]
-description = "Suggest by name or find nearest by coordinates cities"
+version.workspace = true
+authors.workspace = true
+description = "Geosuggest index update utilities"
 readme = "README.md"
 keywords = ["geocoding", "service"]
 repository = "https://github.com/estin/geosuggest.git"

@@ -1,8 +1,8 @@
 [package]
 name = "geosuggest"
-version = "0.4.2"
-authors = ["geosuggest contributors"]
-description = "Suggest by name or find nearest by coordinates cities"
+version.workspace = true
+authors.workspace = true
+description = "HTTP service to suggest cities by name or find nearest by coordinates"
 readme = "README.md"
 keywords = ["geocoding", "service"]
 repository = "https://github.com/estin/geosuggest.git"

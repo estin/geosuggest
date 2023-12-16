@@ -8,6 +8,11 @@ members = [
   "examples",
 ]
 
+[workspace.package]
+version = "0.5.1"
+authors = ["geosuggest contributors"]
+license = "MIT"
+
 [workspace.dependencies]
 anyhow             = "1"
 tracing            = "0.1"
