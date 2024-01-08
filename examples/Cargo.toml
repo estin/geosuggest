@@ -14,5 +14,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 
-geosuggest-core = { path = "../geosuggest-core", version = "0.5", features=[ "tracing" ] }
-geosuggest-utils = { path = "../geosuggest-utils", version = "0.5", features=[ "tracing" ] }
+geosuggest-core = { path = "../geosuggest-core", version = "0.6", features=[ "tracing" ] }
+geosuggest-utils = { path = "../geosuggest-utils", version = "0.6", features=[ "tracing" ] }
