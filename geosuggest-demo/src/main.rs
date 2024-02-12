@@ -309,7 +309,7 @@ fn App<G: Html>(cx: Scope) -> View<G> {
                         k: None,
                     };
                     if let Ok(result) = fetch_reverse(query).await {
-                        if let Some(item) = result.items.get(0) {
+                        if let Some(item) = result.items.first() {
                             selected_item_clone.set(SelectedCity {
                                 city: Some(item.city.clone()),
                             });
