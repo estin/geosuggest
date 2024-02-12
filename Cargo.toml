@@ -46,7 +46,3 @@ reqwest = { version = "0.11", features = [
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 futures = "0.3"
 clap = { version = "4.3", features = ["derive"] }
-
-# [patch.crates-io]
-# ntex-files = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "7b8a385" }
-# ntex-cors  = { git = "https://github.com/ntex-rs/ntex-extras.git", rev = "7b8a385" }
