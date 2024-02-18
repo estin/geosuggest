@@ -36,7 +36,9 @@ impl Default for IndexUpdaterSettings<'_> {
                 filename: "alternateNamesV2.txt",
             }),
             countries_url: Some("https://download.geonames.org/export/dump/countryInfo.txt"),
-            admin1_codes_url: Some("https://download.geonames.org/export/dump/admin1CodesASCII.txt"),
+            admin1_codes_url: Some(
+                "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+            ),
             admin2_codes_url: Some("https://download.geonames.org/export/dump/admin2Codes.txt"),
             filter_languages: Vec::new(),
             // max_payload_size: 200 * 1024 * 1024,
