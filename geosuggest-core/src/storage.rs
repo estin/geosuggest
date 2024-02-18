@@ -126,7 +126,7 @@ pub mod json {
                 .truncate(false)
                 .open(&path)?;
 
-            let Some(raw_metadata ) = std::io::BufReader::new(file).lines().next() else {
+            let Some(raw_metadata) = std::io::BufReader::new(file).lines().next() else {
                 return Ok(None);
             };
 

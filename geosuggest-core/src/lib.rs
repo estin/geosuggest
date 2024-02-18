@@ -7,11 +7,7 @@ use std::time::Instant;
 
 use itertools::Itertools;
 
-use kiddo::{
-    self,
-    float::kdtree::KdTree,
-    SquaredEuclidean,
-};
+use kiddo::{self, float::kdtree::KdTree, SquaredEuclidean};
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -461,7 +457,9 @@ impl Engine {
                 .take(limit)
                 .collect::<Vec<_>>();
 
-            points.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            points.sort_unstable_by(|a, b| {
+                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             Some(
                 points
