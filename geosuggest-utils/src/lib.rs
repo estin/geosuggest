@@ -28,16 +28,16 @@ impl Default for IndexUpdaterSettings<'_> {
         IndexUpdaterSettings {
             http_timeout_ms: 300_000,
             cities: SourceItem {
-                url: "http://download.geonames.org/export/dump/cities5000.zip",
+                url: "https://download.geonames.org/export/dump/cities5000.zip",
                 filename: "cities5000.txt",
             },
             names: Some(SourceItem {
-                url: "http://download.geonames.org/export/dump/alternateNamesV2.zip",
+                url: "https://download.geonames.org/export/dump/alternateNamesV2.zip",
                 filename: "alternateNamesV2.txt",
             }),
-            countries_url: Some("http://download.geonames.org/export/dump/countryInfo.txt"),
-            admin1_codes_url: Some("http://download.geonames.org/export/dump/admin1CodesASCII.txt"),
-            admin2_codes_url: Some("http://download.geonames.org/export/dump/admin2Codes.txt"),
+            countries_url: Some("https://download.geonames.org/export/dump/countryInfo.txt"),
+            admin1_codes_url: Some("https://download.geonames.org/export/dump/admin1CodesASCII.txt"),
+            admin2_codes_url: Some("https://download.geonames.org/export/dump/admin2Codes.txt"),
             filter_languages: Vec::new(),
             // max_payload_size: 200 * 1024 * 1024,
         }
