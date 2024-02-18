@@ -334,7 +334,7 @@ impl Engine {
             } else {
                 jaro_winkler(&item.value, &normalized_pattern) as f32
             };
-            if score > min_score {
+            if score >= min_score {
                 self.geonames.get(&item.id).map(|city| (city, score))
             } else {
                 None
