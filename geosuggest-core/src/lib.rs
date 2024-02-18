@@ -371,7 +371,7 @@ impl Engine {
         };
 
         // sort by score desc, population desc
-        result.sort_by(|lhs, rhs| {
+        result.sort_unstable_by(|lhs, rhs| {
             if (lhs.1 - rhs.1).abs() < f32::EPSILON {
                 rhs.0
                     .population
