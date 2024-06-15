@@ -27,7 +27,7 @@ Main features:
 
 Crate usage [example](https://github.com/estin/geosuggest/tree/master/examples/src/simple.rs)
 
-```bash
+```console
 $ cargo run -p examples --release --bin simple
 ```
 
@@ -36,7 +36,7 @@ $ cargo run -p examples --release --bin simple
 
 Install from sources (preferred).
 
-```bash
+```console
 $ git clone https://github.com/estin/geosuggest.git
 $ cd geosuggest
 $ cargo build --release
@@ -44,7 +44,7 @@ $ cargo build --release
 
 Build index file
 
-```bash
+```console
 $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --features=cli,tracing -- \
     from-urls \
     --languages=ru,uk,be,zh,ja \
@@ -53,7 +53,7 @@ $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --feature
 
 Run
 
-```bash
+```console
 $ GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.bincode \
     GEOSUGGEST__HOST=127.0.0.1 \
     GEOSUGGEST__PORT=8080 \
@@ -63,7 +63,7 @@ $ GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.bincode \
 
 Check
 
-```bash
+```console
 $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
 ```
 
@@ -98,7 +98,7 @@ See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosu
 
 ## Test
 
-```bash
+```console
 $ cargo test --workspace --all-features
 ```
 
