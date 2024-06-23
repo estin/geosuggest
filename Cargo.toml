@@ -5,7 +5,6 @@ members = [
   "geosuggest-core",
   "geosuggest-utils",
   "geosuggest-demo",
-  "examples",
 ]
 
 [workspace.package]
