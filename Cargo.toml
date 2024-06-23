@@ -2,9 +2,7 @@
 resolver = "2"
 members = [
   "geosuggest",
-  "geosuggest-core",
-  "geosuggest-utils",
-  "geosuggest-demo",
+  "geosuggest-*",
 ]
 
 [workspace.package]

@@ -13,4 +13,4 @@ jobs:
           components: clippy
       - run: cargo clippy --workspace --all-features
       - run: cargo test --workspace --all-features
-      - run: cargo run -p examples --release --bin simple
+      - run: cargo run -p geosuggest-examples --release --bin simple

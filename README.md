@@ -28,7 +28,7 @@ Main features:
 Crate usage [example](https://github.com/estin/geosuggest/tree/master/examples/src/simple.rs)
 
 ```console
-$ cargo run -p examples --release --bin simple
+$ cargo run -p geosuggest-examples --release --bin simple
 ```
 
 

@@ -99,7 +99,9 @@ pub struct ReverseResult {
 }
 
 enum RequestError {
+    #[allow(dead_code)]
     SerializeRequestError(serde_qs::Error),
+    #[allow(dead_code)]
     FetchError(reqwasm::Error),
 }
 
