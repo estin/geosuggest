@@ -27,7 +27,7 @@ kiddo      = { version = "4.2", features = ["immutable"] }
 geoip2     = "0.1.7"
 
 bincode   = "1.3.3"
-itertools = "0.12"
+itertools = "0.13"
 
 # service
 oaph       = { version = "0.2" }
