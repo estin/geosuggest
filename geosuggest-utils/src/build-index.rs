@@ -23,31 +23,31 @@ enum Args {
 #[command(version, about)]
 struct Files {
     /// Cities file
-    #[arg(short, long)]
+    #[arg(long)]
     cities: String,
 
     /// Countries file
-    #[arg(short, long)]
+    #[arg(long)]
     countries: Option<String>,
 
     /// Names file
-    #[arg(short, long)]
+    #[arg(long)]
     names: Option<String>,
 
     /// Admin codes file
-    #[arg(short, long)]
+    #[arg(long)]
     admin_codes: Option<String>,
 
     /// Admin2 codes file
-    #[arg(short, long)]
+    #[arg(long)]
     admin2_codes: Option<String>,
 
     /// Languages
-    #[arg(short, long)]
+    #[arg(long)]
     languages: Option<String>,
 
     /// Dump index to file
-    #[arg(short, long)]
+    #[arg(long)]
     output: String,
 }
 
@@ -56,39 +56,39 @@ struct Files {
 #[command(version, about)]
 struct Urls {
     /// Cities url
-    #[arg(short, long)]
+    #[arg(long)]
     cities_url: Option<String>,
 
     /// Citeis filename in archive
-    #[arg(short, long)]
+    #[arg(long)]
     cities_filename: Option<String>,
 
     /// Names url
-    #[arg(short, long)]
+    #[arg(long)]
     names_url: Option<String>,
 
     /// Names filename in archive
-    #[arg(short, long)]
+    #[arg(long)]
     names_filename: Option<String>,
 
     /// Countries url
-    #[arg(short, long)]
+    #[arg(long)]
     countries_url: Option<String>,
 
     /// Admin codes url
-    #[arg(short, long)]
+    #[arg(long)]
     admin_codes_url: Option<String>,
 
     /// Admin2 codes url
-    #[arg(short, long)]
+    #[arg(long)]
     admin2_codes_url: Option<String>,
 
     /// Languages
-    #[arg(short, long)]
+    #[arg(long)]
     languages: Option<String>,
 
     /// Dump index to file
-    #[arg(short, long)]
+    #[arg(long)]
     output: String,
 }
 
