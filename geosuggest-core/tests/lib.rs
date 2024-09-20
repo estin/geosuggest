@@ -120,7 +120,7 @@ fn json_build_dump_load() -> Result<(), Box<dyn Error>> {
     // dump
     storage.dump_to(&filepath, &engine)?;
 
-    // check metdata
+    // check metadata
     let metadata = storage.read_metadata(&filepath)?;
     assert!(metadata.is_some());
 
@@ -155,7 +155,7 @@ fn bincode_build_dump_load() -> Result<(), Box<dyn Error>> {
     // dump
     storage.dump_to(&filepath, &engine)?;
 
-    // check metdata
+    // check metadata
     let metadata = storage.read_metadata(&filepath)?;
     assert!(metadata.is_some());
 
