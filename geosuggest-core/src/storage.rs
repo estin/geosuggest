@@ -14,7 +14,7 @@ pub trait IndexStorage {
     fn load<R>(&self, buff: &mut R) -> Result<Engine, Box<dyn std::error::Error>>
     where
         R: std::io::Read;
-    /// Read engine metada (don't load whole engine)
+    /// Read engine metadata (don't load whole engine)
     fn read_metadata<P: AsRef<Path>>(
         &self,
         path: P,
@@ -115,7 +115,7 @@ pub mod json {
 
             Ok(serde_json::from_str::<EngineDump>(&raw_payload?)?.into())
         }
-        /// Read engine metada and don't load whole engine
+        /// Read engine metadata and don't load whole engine
         fn read_metadata<P: AsRef<Path>>(
             &self,
             path: P,
@@ -188,7 +188,7 @@ pub mod bincode {
             Ok(bincode::deserialize_from::<_, EngineDump>(buff)?.into())
         }
 
-        /// Read engine metada and don't load whole engine
+        /// Read engine metadata and don't load whole engine
         fn read_metadata<P: AsRef<Path>>(
             &self,
             path: P,
