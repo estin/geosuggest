@@ -23,7 +23,7 @@ config     = "0.14"
 csv        = "1"
 rayon      = "1"
 strsim     = "0.11"
-kiddo      = { version = "4.2", features = ["immutable"] }
+kiddo      = { version = "5.0", features = ["immutable"] }
 geoip2     = "0.1.7"
 
 bincode   = "1.3.3"
