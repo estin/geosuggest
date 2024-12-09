@@ -7,7 +7,9 @@ use std::time::Instant;
 
 use itertools::Itertools;
 
-use kiddo::{self, float::kdtree::KdTree, SquaredEuclidean};
+use kiddo::{self, SquaredEuclidean};
+
+use kiddo::immutable::float::kdtree::ImmutableKdTree;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -281,7 +283,9 @@ pub struct Engine {
     pub metadata: Option<EngineMetadata>,
 
     #[serde(skip_serializing)]
-    tree: KdTree<f32, u32, 2, 32, u16>,
+    tree_index_to_geonameid: HashMap<usize, u32>,
+    #[serde(skip_serializing)]
+    tree: ImmutableKdTree<f32, u32, 2, 32>,
 
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
@@ -404,13 +408,13 @@ impl Engine {
             return None;
         }
 
-        let nearest_limit = if countries.is_some() {
+        let nearest_limit = std::num::NonZero::new(if countries.is_some() {
             // ugly hack try to fetch nearest cities in requested countries
             // much better is to build index for concrete countries
             self.geonames.len()
         } else {
             limit
-        };
+        })?;
 
         let mut i1;
         let mut i2;
@@ -428,7 +432,8 @@ impl Engine {
                 .collect::<Vec<_>>();
 
             i1 = items.iter_mut().filter_map(move |nearest| {
-                let city = self.geonames.get(&nearest.item)?;
+                let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                let city = self.geonames.get(geonameid)?;
                 let country = city.country.as_ref()?;
                 if countries.contains(&country.code) {
                     Some((nearest, city))
@@ -439,7 +444,8 @@ impl Engine {
             &mut i1
         } else {
             i2 = items.iter_mut().filter_map(|nearest| {
-                let city = self.geonames.get(&nearest.item)?;
+                let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                let city = self.geonames.get(geonameid)?;
                 Some((nearest, city))
             });
             &mut i2
@@ -843,7 +849,7 @@ impl Engine {
             None => None,
         };
 
-        let mut tree = KdTree::new();
+        let mut tree = Vec::with_capacity(records.len());
 
         for record in records {
             // INCLUDE:
@@ -880,7 +886,8 @@ impl Engine {
                 continue;
             }
 
-            tree.add(&[record.latitude, record.longitude], record.geonameid);
+            // tree.add(&[record.latitude, record.longitude], record.geonameid);
+            tree.push((record.geonameid, [record.latitude, record.longitude]));
 
             let country_id = country_by_code
                 .as_ref()
@@ -991,8 +998,26 @@ impl Engine {
             );
         }
 
+        tree.sort_unstable_by_key(|item| item.0);
+
+        let tree_index_to_geonameid = HashMap::from_iter(
+            tree.clone()
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index, item.0)),
+        );
+
+        let tree = ImmutableKdTree::new_from_slice(
+            tree.clone()
+                .into_iter()
+                .map(|item| item.1)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
         let engine = Engine {
             geonames,
+            tree_index_to_geonameid,
             tree,
             entries,
             metadata: None,
@@ -1112,16 +1137,36 @@ impl std::fmt::Display for GeoIP2Error {
 
 impl From<EngineDump> for Engine {
     fn from(engine_dump: EngineDump) -> Engine {
-        let mut tree = KdTree::new();
-        for (geonameid, record) in &engine_dump.geonames {
-            tree.add(&[record.latitude, record.longitude], *geonameid);
-        }
+        let mut items = engine_dump
+            .geonames
+            .clone()
+            .into_values()
+            .map(|record| (record.id, [record.latitude, record.longitude]))
+            .collect::<Vec<_>>();
+
+        items.sort_unstable_by_key(|item| item.0);
+
+        let tree_index_to_geonameid = HashMap::from_iter(
+            items
+                .clone()
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index, item.0)),
+        );
+        let tree = ImmutableKdTree::new_from_slice(
+            items
+                .into_iter()
+                .map(|item| item.1)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
         Engine {
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
             capitals: engine_dump.capitals,
             country_info_by_code: engine_dump.country_info_by_code,
+            tree_index_to_geonameid,
             tree,
             metadata: engine_dump.metadata,
             #[cfg(feature = "geoip2_support")]

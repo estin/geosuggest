@@ -5,7 +5,6 @@ use geosuggest_core::{
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2_support")]
-#[cfg(feature = "geoip2_support")]
 use std::{net::IpAddr, str::FromStr};
 
 fn get_engine(
