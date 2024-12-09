@@ -545,10 +545,6 @@ impl Engine {
         #[cfg(feature = "tracing")]
         let now = Instant::now();
 
-        let mut entries: Vec<Entry> = Vec::new();
-        let mut geonames: HashMap<u32, CitiesRecord> = HashMap::new();
-        let mut capitals: HashMap<String, u32> = HashMap::new();
-
         let records = split_content_to_n_parts(&cities, rayon::current_num_threads())
             .par_iter()
             .map(|chunk| {
@@ -568,6 +564,16 @@ impl Engine {
                 m1.append(m2);
                 m1
             });
+
+        let mut geonames: Vec<CitiesRecord> = Vec::with_capacity(records.len());
+        let mut entries: Vec<Entry> = Vec::with_capacity(
+            records.len()
+                * if !filter_languages.is_empty() {
+                    filter_languages.len()
+                } else {
+                    1
+                },
+        );
 
         #[cfg(feature = "tracing")]
         tracing::info!(
@@ -849,7 +855,12 @@ impl Engine {
             None => None,
         };
 
-        let mut tree = Vec::with_capacity(records.len());
+        let mut capitals: HashMap<String, u32> =
+            HashMap::with_capacity(if let Some(items) = &country_by_code {
+                items.len()
+            } else {
+                0
+            });
 
         for record in records {
             // INCLUDE:
@@ -880,14 +891,6 @@ impl Engine {
             };
 
             let is_capital = feature_code == "PPLC";
-
-            // prevent duplicates
-            if geonames.contains_key(&record.geonameid) {
-                continue;
-            }
-
-            // tree.add(&[record.latitude, record.longitude], record.geonameid);
-            tree.push((record.geonameid, [record.latitude, record.longitude]));
 
             let country_id = country_by_code
                 .as_ref()
@@ -967,56 +970,53 @@ impl Engine {
             } else {
                 None
             };
-
-            geonames.insert(
-                record.geonameid,
-                CitiesRecord {
-                    id: record.geonameid,
-                    name: record.name,
-                    country: country.as_ref().map(Country::from),
-                    admin_division,
-                    admin2_division,
-                    latitude: record.latitude,
-                    longitude: record.longitude,
-                    timezone: record.timezone,
-                    names: match names_by_id {
-                        Some(ref mut names) => {
-                            if is_capital {
-                                names.get(&record.geonameid).cloned()
-                            } else {
-                                // don't hold unused data
-                                names.remove(&record.geonameid)
-                            }
+            geonames.push(CitiesRecord {
+                id: record.geonameid,
+                name: record.name,
+                country: country.as_ref().map(Country::from),
+                admin_division,
+                admin2_division,
+                latitude: record.latitude,
+                longitude: record.longitude,
+                timezone: record.timezone,
+                names: match names_by_id {
+                    Some(ref mut names) => {
+                        if is_capital {
+                            names.get(&record.geonameid).cloned()
+                        } else {
+                            // don't hold unused data
+                            names.remove(&record.geonameid)
                         }
-                        None => None,
-                    },
-                    country_names,
-                    admin1_names,
-                    admin2_names,
-                    population: record.population,
+                    }
+                    None => None,
                 },
-            );
+                country_names,
+                admin1_names,
+                admin2_names,
+                population: record.population,
+            });
         }
 
-        tree.sort_unstable_by_key(|item| item.0);
+        geonames.sort_unstable_by_key(|item| item.id);
+        geonames.dedup_by_key(|item| item.id);
 
         let tree_index_to_geonameid = HashMap::from_iter(
-            tree.clone()
+            geonames
                 .iter()
                 .enumerate()
-                .map(|(index, item)| (index, item.0)),
+                .map(|(index, item)| (index, item.id)),
         );
 
         let tree = ImmutableKdTree::new_from_slice(
-            tree.clone()
-                .into_iter()
-                .map(|item| item.1)
+            geonames
+                .iter()
+                .map(|item| [item.latitude, item.longitude])
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
 
         let engine = Engine {
-            geonames,
+            geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
             tree_index_to_geonameid,
             tree,
             entries,
@@ -1139,16 +1139,15 @@ impl From<EngineDump> for Engine {
     fn from(engine_dump: EngineDump) -> Engine {
         let mut items = engine_dump
             .geonames
-            .clone()
-            .into_values()
+            .values()
             .map(|record| (record.id, [record.latitude, record.longitude]))
             .collect::<Vec<_>>();
 
         items.sort_unstable_by_key(|item| item.0);
+        items.dedup_by_key(|item| item.0);
 
         let tree_index_to_geonameid = HashMap::from_iter(
             items
-                .clone()
                 .iter()
                 .enumerate()
                 .map(|(index, item)| (index, item.0)),
