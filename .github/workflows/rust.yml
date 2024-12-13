@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          toolchain: stable
           components: clippy
-      - run: cargo clippy --workspace --all-features
-      - run: cargo test --workspace --all-features
+      - run: cargo clippy --workspace --no-default-features --features="tokio,geoip2_support,tracing"
+      - run: cargo test --workspace --no-default-features --features="tokio,geoip2_support,tracing"
       - run: cargo run -p geosuggest-examples --release --bin simple

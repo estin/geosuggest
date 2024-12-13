@@ -7,7 +7,9 @@ use std::time::Instant;
 
 use itertools::Itertools;
 
-use kiddo::{self, float::kdtree::KdTree, SquaredEuclidean};
+use kiddo::{self, SquaredEuclidean};
+
+use kiddo::immutable::float::kdtree::ImmutableKdTree;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -281,7 +283,9 @@ pub struct Engine {
     pub metadata: Option<EngineMetadata>,
 
     #[serde(skip_serializing)]
-    tree: KdTree<f32, u32, 2, 32, u16>,
+    tree_index_to_geonameid: HashMap<usize, u32>,
+    #[serde(skip_serializing)]
+    tree: ImmutableKdTree<f32, u32, 2, 32>,
 
     #[cfg(feature = "geoip2_support")]
     #[serde(skip_serializing)]
@@ -404,13 +408,13 @@ impl Engine {
             return None;
         }
 
-        let nearest_limit = if countries.is_some() {
+        let nearest_limit = std::num::NonZero::new(if countries.is_some() {
             // ugly hack try to fetch nearest cities in requested countries
             // much better is to build index for concrete countries
             self.geonames.len()
         } else {
             limit
-        };
+        })?;
 
         let mut i1;
         let mut i2;
@@ -428,7 +432,8 @@ impl Engine {
                 .collect::<Vec<_>>();
 
             i1 = items.iter_mut().filter_map(move |nearest| {
-                let city = self.geonames.get(&nearest.item)?;
+                let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                let city = self.geonames.get(geonameid)?;
                 let country = city.country.as_ref()?;
                 if countries.contains(&country.code) {
                     Some((nearest, city))
@@ -439,7 +444,8 @@ impl Engine {
             &mut i1
         } else {
             i2 = items.iter_mut().filter_map(|nearest| {
-                let city = self.geonames.get(&nearest.item)?;
+                let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                let city = self.geonames.get(geonameid)?;
                 Some((nearest, city))
             });
             &mut i2
@@ -539,10 +545,6 @@ impl Engine {
         #[cfg(feature = "tracing")]
         let now = Instant::now();
 
-        let mut entries: Vec<Entry> = Vec::new();
-        let mut geonames: HashMap<u32, CitiesRecord> = HashMap::new();
-        let mut capitals: HashMap<String, u32> = HashMap::new();
-
         let records = split_content_to_n_parts(&cities, rayon::current_num_threads())
             .par_iter()
             .map(|chunk| {
@@ -562,6 +564,16 @@ impl Engine {
                 m1.append(m2);
                 m1
             });
+
+        let mut geonames: Vec<CitiesRecord> = Vec::with_capacity(records.len());
+        let mut entries: Vec<Entry> = Vec::with_capacity(
+            records.len()
+                * if !filter_languages.is_empty() {
+                    filter_languages.len()
+                } else {
+                    1
+                },
+        );
 
         #[cfg(feature = "tracing")]
         tracing::info!(
@@ -843,7 +855,12 @@ impl Engine {
             None => None,
         };
 
-        let mut tree = KdTree::new();
+        let mut capitals: HashMap<String, u32> =
+            HashMap::with_capacity(if let Some(items) = &country_by_code {
+                items.len()
+            } else {
+                0
+            });
 
         for record in records {
             // INCLUDE:
@@ -874,13 +891,6 @@ impl Engine {
             };
 
             let is_capital = feature_code == "PPLC";
-
-            // prevent duplicates
-            if geonames.contains_key(&record.geonameid) {
-                continue;
-            }
-
-            tree.add(&[record.latitude, record.longitude], record.geonameid);
 
             let country_id = country_by_code
                 .as_ref()
@@ -960,39 +970,54 @@ impl Engine {
             } else {
                 None
             };
-
-            geonames.insert(
-                record.geonameid,
-                CitiesRecord {
-                    id: record.geonameid,
-                    name: record.name,
-                    country: country.as_ref().map(Country::from),
-                    admin_division,
-                    admin2_division,
-                    latitude: record.latitude,
-                    longitude: record.longitude,
-                    timezone: record.timezone,
-                    names: match names_by_id {
-                        Some(ref mut names) => {
-                            if is_capital {
-                                names.get(&record.geonameid).cloned()
-                            } else {
-                                // don't hold unused data
-                                names.remove(&record.geonameid)
-                            }
+            geonames.push(CitiesRecord {
+                id: record.geonameid,
+                name: record.name,
+                country: country.as_ref().map(Country::from),
+                admin_division,
+                admin2_division,
+                latitude: record.latitude,
+                longitude: record.longitude,
+                timezone: record.timezone,
+                names: match names_by_id {
+                    Some(ref mut names) => {
+                        if is_capital {
+                            names.get(&record.geonameid).cloned()
+                        } else {
+                            // don't hold unused data
+                            names.remove(&record.geonameid)
                         }
-                        None => None,
-                    },
-                    country_names,
-                    admin1_names,
-                    admin2_names,
-                    population: record.population,
+                    }
+                    None => None,
                 },
-            );
+                country_names,
+                admin1_names,
+                admin2_names,
+                population: record.population,
+            });
         }
 
+        geonames.sort_unstable_by_key(|item| item.id);
+        geonames.dedup_by_key(|item| item.id);
+
+        let tree_index_to_geonameid = HashMap::from_iter(
+            geonames
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index, item.id)),
+        );
+
+        let tree = ImmutableKdTree::new_from_slice(
+            geonames
+                .iter()
+                .map(|item| [item.latitude, item.longitude])
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
         let engine = Engine {
-            geonames,
+            geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
+            tree_index_to_geonameid,
             tree,
             entries,
             metadata: None,
@@ -1112,16 +1137,35 @@ impl std::fmt::Display for GeoIP2Error {
 
 impl From<EngineDump> for Engine {
     fn from(engine_dump: EngineDump) -> Engine {
-        let mut tree = KdTree::new();
-        for (geonameid, record) in &engine_dump.geonames {
-            tree.add(&[record.latitude, record.longitude], *geonameid);
-        }
+        let mut items = engine_dump
+            .geonames
+            .values()
+            .map(|record| (record.id, [record.latitude, record.longitude]))
+            .collect::<Vec<_>>();
+
+        items.sort_unstable_by_key(|item| item.0);
+        items.dedup_by_key(|item| item.0);
+
+        let tree_index_to_geonameid = HashMap::from_iter(
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index, item.0)),
+        );
+        let tree = ImmutableKdTree::new_from_slice(
+            items
+                .into_iter()
+                .map(|item| item.1)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
         Engine {
             entries: engine_dump.entries,
             geonames: engine_dump.geonames,
             capitals: engine_dump.capitals,
             country_info_by_code: engine_dump.country_info_by_code,
+            tree_index_to_geonameid,
             tree,
             metadata: engine_dump.metadata,
             #[cfg(feature = "geoip2_support")]
