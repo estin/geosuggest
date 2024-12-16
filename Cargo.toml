@@ -6,7 +6,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.6.4"
+version = "0.6.5"
 authors = ["geosuggest contributors"]
 license = "MIT"
 
