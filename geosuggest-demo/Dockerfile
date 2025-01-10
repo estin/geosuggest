@@ -26,8 +26,24 @@ RUN cd /tmp \
     && unzip $CITIES.zip \
     && unzip alternateNamesV2.zip
 
-# fix Crimea
-RUN cat /tmp/$CITIES.txt | sed "s/UA\t\t11/RU\t\t192/p" > /tmp/fixed-$CITIES.txt 
+# fix new Russian regions
+RUN sed -ie "s/UA\t\t11/RU\t\t192/p" /tmp/$CITIES.txt
+RUN sed -ie "s/UA\t\t11/RU\t\t192/p" /tmp/$TEST_CITIES.txt
+
+RUN sed -ie "s/UA\t\t20/RU\t\t193/p" /tmp/$CITIES.txt
+RUN sed -ie "s/UA\t\t20/RU\t\t193/p" /tmp/$TEST_CITIES.txt
+
+RUN sed -ie "s/UA\t\t05/RU\t\t194/p" /tmp/$CITIES.txt
+RUN sed -ie "s/UA\t\t05/RU\t\t194/p" /tmp/$TEST_CITIES.txt
+
+RUN sed -ie "s/UA\t\t14/RU\t\t195/p" /tmp/$CITIES.txt
+RUN sed -ie "s/UA\t\t14/RU\t\t195/p" /tmp/$TEST_CITIES.txt
+
+RUN sed -ie "s/UA\t\t08/RU\t\t196/p" /tmp/$CITIES.txt
+RUN sed -ie "s/UA\t\t08/RU\t\t196/p" /tmp/$TEST_CITIES.txt
+
+RUN sed -ie "s/UA\t\t26/RU\t\t197/p" /tmp/$CITIES.txt
+RUN sed -ie "s/UA\t\t26/RU\t\t197/p" /tmp/$TEST_CITIES.txt
 
 RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
