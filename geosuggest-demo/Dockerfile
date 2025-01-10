@@ -1,4 +1,4 @@
-FROM rust:1.71-slim-bookworm
+FROM rust:1.84-slim-bullseye
 
 ARG GEOSUGGEST_BASE_API_URL=$GEOSUGGEST_BASE_API_URL
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
@@ -28,26 +28,15 @@ RUN cd /tmp \
 
 # fix new Russian regions
 RUN sed -ie "s/UA\t\t11/RU\t\t192/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t11/RU\t\t192/p" /tmp/$TEST_CITIES.txt
-
 RUN sed -ie "s/UA\t\t20/RU\t\t193/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t20/RU\t\t193/p" /tmp/$TEST_CITIES.txt
-
 RUN sed -ie "s/UA\t\t05/RU\t\t194/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t05/RU\t\t194/p" /tmp/$TEST_CITIES.txt
-
 RUN sed -ie "s/UA\t\t14/RU\t\t195/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t14/RU\t\t195/p" /tmp/$TEST_CITIES.txt
-
 RUN sed -ie "s/UA\t\t08/RU\t\t196/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t08/RU\t\t196/p" /tmp/$TEST_CITIES.txt
-
 RUN sed -ie "s/UA\t\t26/RU\t\t197/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t26/RU\t\t197/p" /tmp/$TEST_CITIES.txt
 
 RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
-    --cities=/tmp/fixed-$CITIES.txt \
+    --cities=/tmp/$CITIES.txt \
     --names=/tmp/alternateNamesV2.txt \
     --admin-codes=/tmp/admin1CodesASCII.txt \
     --admin2-codes=/tmp/admin2Codes.txt \
