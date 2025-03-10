@@ -163,10 +163,11 @@ pub mod bincode {
         where
             W: std::io::Write,
         {
-            let metadata = bincode::serialize(&engine.metadata)?;
+            let config = bincode::config::standard();
+            let metadata = bincode::serde::encode_to_vec(&engine.metadata, config)?;
             buff.write_all(&(metadata.len() as u32).to_be_bytes())?;
             buff.write_all(&metadata)?;
-            bincode::serialize_into(buff, &engine)?;
+            bincode::serde::encode_into_std_write(engine, buff, config)?;
             Ok(())
         }
 
@@ -185,7 +186,11 @@ pub mod bincode {
             buff.read_exact(&mut skip)?;
 
             // load payload
-            Ok(bincode::deserialize_from::<_, EngineDump>(buff)?.into())
+            Ok(bincode::serde::decode_from_std_read::<EngineDump, _, _>(
+                buff,
+                bincode::config::standard(),
+            )?
+            .into())
         }
 
         /// Read engine metadata and don't load whole engine
@@ -206,7 +211,12 @@ pub mod bincode {
             let mut raw_metadata = vec![0; metadata_len as usize];
             file.read_exact(&mut raw_metadata)?;
 
-            Ok(bincode::deserialize(&raw_metadata)?)
+            let (metadata, _) = bincode::serde::borrow_decode_from_slice(
+                &raw_metadata,
+                bincode::config::standard(),
+            )?;
+
+            Ok(metadata)
         }
     }
 }
