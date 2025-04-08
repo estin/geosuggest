@@ -25,7 +25,7 @@ Main features:
 
 ## Library
 
-Crate usage [example](https://github.com/estin/geosuggest/tree/master/examples/src/simple.rs)
+Crate usage [example](https://github.com/estin/geosuggest/blob/master/geosuggest-examples/src/simple.rs)
 
 ```console
 $ cargo run -p geosuggest-examples --release --bin simple
