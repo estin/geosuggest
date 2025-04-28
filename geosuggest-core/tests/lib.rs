@@ -112,7 +112,7 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
 #[test_log::test]
 fn json_build_dump_load() -> Result<(), Box<dyn Error>> {
     let filepath = temp_dir().join("test-engine.json");
-    let storage = storage::json::Storage::new();
+    let storage = storage::Storage::new();
     // build
     let engine = get_engine(None, None, None, vec![])?;
 

@@ -12,10 +12,13 @@ license = "MIT"
 edition = "2021"
 
 [features]
-default = []
+# default = ["rkyv"]
+default = ["bincode"]
 oaph_support = ["oaph"]
 geoip2_support = ["geoip2"]
 tracing = ["dep:tracing"]
+bincode = ["dep:bincode"]
+rkyv = ["dep:rkyv"]
 
 [dependencies]
 tracing = { workspace = true, optional = true }
@@ -24,8 +27,9 @@ serde.workspace = true
 rayon.workspace = true
 strsim.workspace = true
 kiddo.workspace = true
-serde_json.workspace = true
-bincode.workspace = true
+serde_json = { workspace = true, optional = true }
+bincode = { workspace = true, optional = true }
+rkyv = { workspace = true, optional = true}
 itertools.workspace = true
 
 geoip2 = { workspace = true, optional = true}
