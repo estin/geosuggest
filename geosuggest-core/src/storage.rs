@@ -1,10 +1,10 @@
 use crate::{ArchivedEngineDump, ArchivedEngineMetadata, EngineDump};
 use crate::{Engine, EngineMetadata};
 use rkyv;
-use rkyv::{deserialize, rancor::Error, with, Archive, Deserialize, Serialize};
+use rkyv::{deserialize, rancor::Error};
 use std::fs::OpenOptions;
 use std::io::Read;
-use std::io::{Seek, SeekFrom};
+use std::io::SeekFrom;
 use std::path::Path;
 
 #[cfg(feature = "tracing")]
@@ -114,20 +114,17 @@ impl IndexStorage for Storage {
         let mut metadata_len = [0; 4];
         buff.read_exact(&mut metadata_len)?;
         let metadata_len = u32::from_be_bytes(metadata_len);
-        // // TODO use Seek?
-        // // std::io::copy(buff.take(metadata_len.into()), &mut std::io::sink());
-        let mut skip = vec![0; metadata_len as usize];
-        buff.read_exact(&mut skip)?;
-        // buff.seek(SeekFrom::End(metadata_len as i64))?;
+        let pos = buff.seek(SeekFrom::Current(metadata_len as i64))?;
+        println!("New pos is {pos} where metadata len is {metadata_len}");
 
         // Read all bytes into memory (for small data)
         let mut bytes = Vec::new();
         buff.read_to_end(&mut bytes)?;
 
         // Validate and deserialize
-        let archived = rkyv::access::<ArchivedEngineDump, Error>(&bytes[..]).unwrap();
+        let archived = rkyv::access::<ArchivedEngineDump, Error>(&bytes[..])?;
 
-        Ok(deserialize::<EngineDump, Error>(archived).unwrap().into())
+        Ok(deserialize::<EngineDump, Error>(archived)?.into())
     }
 
     /// Read engine metadata and don't load whole engine
@@ -148,10 +145,8 @@ impl IndexStorage for Storage {
         let mut raw_metadata = vec![0; metadata_len as usize];
         file.read_exact(&mut raw_metadata)?;
 
-        let archived = rkyv::access::<ArchivedEngineMetadata, Error>(&raw_metadata[..]).unwrap();
+        let archived = rkyv::access::<ArchivedEngineMetadata, Error>(&raw_metadata[..])?;
 
-        Ok(deserialize::<EngineMetadata, Error>(archived)
-            .unwrap()
-            .into())
+        Ok(deserialize::<EngineMetadata, Error>(archived)?.into())
     }
 }
