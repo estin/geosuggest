@@ -1,11 +1,11 @@
-use geosuggest_core::{Engine, SourceFileOptions};
+use geosuggest_core::{Engine, IndexData, SourceFileOptions};
 use ntex::web::{test, App, Error, ServiceConfig};
 use ntex::{http, web};
 
 use std::sync::Arc;
 
 fn app_config(cfg: &mut ServiceConfig) {
-    let mut engine = Engine::new_from_files(SourceFileOptions {
+    let data = IndexData::new_from_files(SourceFileOptions {
         cities: "../geosuggest-core/tests/misc/cities.txt",
         names: Some("../geosuggest-core/tests/misc/names.txt"),
         countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
@@ -14,6 +14,8 @@ fn app_config(cfg: &mut ServiceConfig) {
         admin2_codes: Some("../geosuggest-core/tests/misc/admin2-codes.txt"),
     })
     .unwrap();
+
+    let mut engine = Engine::from(data);
 
     #[cfg(feature = "geoip2")]
     engine

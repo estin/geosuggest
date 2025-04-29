@@ -1,4 +1,4 @@
-use geosuggest_core::{storage, Engine, EngineMetadata, SourceFileOptions};
+use geosuggest_core::{storage, Engine, EngineMetadata, IndexData, SourceFileOptions};
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2")]
@@ -10,7 +10,7 @@ fn get_engine(
     countries: Option<&str>,
     filter_languages: Vec<&str>,
 ) -> Result<geosuggest_core::Engine, Box<dyn Error>> {
-    let mut engine = Engine::new_from_files(SourceFileOptions {
+    let data = IndexData::new_from_files(SourceFileOptions {
         cities: cities.unwrap_or("tests/misc/cities.txt"),
         names: Some(names.unwrap_or("tests/misc/names.txt")),
         countries: Some(countries.unwrap_or("tests/misc/country-info.txt")),
@@ -18,7 +18,8 @@ fn get_engine(
         admin1_codes: Some("tests/misc/admin1-codes.txt"),
         admin2_codes: Some("tests/misc/admin2-codes.txt"),
     })?;
-    engine.metadata = Some(EngineMetadata::default());
+    let mut engine = Engine::from(data);
+    engine.metadata = EngineMetadata::default().into();
     Ok(engine)
 }
 

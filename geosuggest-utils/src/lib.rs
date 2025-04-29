@@ -3,7 +3,9 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
-use geosuggest_core::{Engine, EngineMetadata, EngineSourceMetadata, SourceFileContentOptions};
+use geosuggest_core::{
+    Engine, EngineMetadata, EngineSourceMetadata, IndexData, SourceFileContentOptions,
+};
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -190,7 +192,7 @@ impl<'a> IndexUpdater<'a> {
         #[cfg(feature = "tracing")]
         tracing::info!("Try to build index...");
 
-        let mut engine = Engine::new_from_files_content(SourceFileContentOptions {
+        let data = IndexData::new_from_files_content(SourceFileContentOptions {
             cities: String::from_utf8(
                 results
                     .remove(&"cities")
@@ -222,6 +224,7 @@ impl<'a> IndexUpdater<'a> {
         })
         .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
+        let mut engine = Engine::from(data);
         engine.metadata = Some(EngineMetadata {
             source: EngineSourceMetadata {
                 cities: self.settings.cities.url.to_owned(),

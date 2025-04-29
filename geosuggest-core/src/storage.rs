@@ -1,4 +1,4 @@
-use crate::{ArchivedEngineDump, ArchivedEngineMetadata, EngineDump};
+use crate::{ArchivedEngineMetadata, ArchivedIndexData, IndexData};
 use crate::{Engine, EngineMetadata};
 use rkyv;
 use rkyv::{deserialize, rancor::Error};
@@ -31,10 +31,10 @@ impl Storage {
     where
         W: std::io::Write,
     {
-        let metadata = rkyv::to_bytes::<Error>(&engine.metadata).unwrap();
+        let metadata = rkyv::to_bytes::<Error>(&engine.metadata)?;
         buff.write_all(&(metadata.len() as u32).to_be_bytes())?;
         buff.write_all(&metadata)?;
-        let data = rkyv::to_bytes::<Error>(engine).unwrap();
+        let data = rkyv::to_bytes::<Error>(&engine.data)?;
         buff.write_all(&data)?;
         Ok(())
     }
@@ -48,17 +48,16 @@ impl Storage {
         let mut metadata_len = [0; 4];
         buff.read_exact(&mut metadata_len)?;
         let metadata_len = u32::from_be_bytes(metadata_len);
-        let pos = buff.seek(SeekFrom::Current(metadata_len as i64))?;
-        println!("New pos is {pos} where metadata len is {metadata_len}");
+        let _ = buff.seek(SeekFrom::Current(metadata_len as i64))?;
 
         // Read all bytes into memory (for small data)
         let mut bytes = Vec::new();
         buff.read_to_end(&mut bytes)?;
 
         // Validate and deserialize
-        let archived = rkyv::access::<ArchivedEngineDump, Error>(&bytes[..])?;
+        let archived = rkyv::access::<ArchivedIndexData, Error>(&bytes[..])?;
 
-        Ok(deserialize::<EngineDump, Error>(archived)?.into())
+        Ok(deserialize::<IndexData, Error>(archived)?.into())
     }
 
     /// Read engine metadata and don't load whole engine
@@ -76,12 +75,17 @@ impl Storage {
         file.read_exact(&mut metadata_len)?;
 
         let metadata_len = u32::from_be_bytes(metadata_len);
+        if metadata_len == 0 {
+            return Ok(None);
+        }
         let mut raw_metadata = vec![0; metadata_len as usize];
         file.read_exact(&mut raw_metadata)?;
 
-        let archived = rkyv::access::<ArchivedEngineMetadata, Error>(&raw_metadata[..])?;
+        let archived = rkyv::access::<rkyv::option::ArchivedOption<ArchivedEngineMetadata>, Error>(
+            &raw_metadata[..],
+        )?;
 
-        Ok(deserialize::<EngineMetadata, Error>(archived)?.into())
+        Ok(deserialize::<Option<EngineMetadata>, Error>(archived)?)
     }
 
     /// Dump whole engine to file

@@ -2,7 +2,7 @@ use anyhow::Result;
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{storage, Engine, SourceFileOptions};
+use geosuggest_core::{storage, IndexData, SourceFileOptions};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings, SourceItem};
 
 use clap::Parser;

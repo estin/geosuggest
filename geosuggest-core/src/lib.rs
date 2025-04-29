@@ -259,13 +259,12 @@ impl Default for EngineMetadata {
     }
 }
 
-#[derive(Clone, rkyv::Deserialize, rkyv::Archive)]
-struct EngineDump {
+#[derive(Clone, rkyv::Deserialize, rkyv::Serialize, rkyv::Archive)]
+pub struct IndexData {
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
     capitals: HashMap<String, u32>,
     country_info_by_code: HashMap<String, CountryRecord>,
-    metadata: Option<EngineMetadata>,
 }
 
 #[derive(Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
@@ -275,22 +274,14 @@ struct Entry {
     country_id: Option<u32>, // geoname country id
 }
 
-#[derive(Clone, rkyv::Serialize, rkyv::Archive)]
+// #[derive(Clone, rkyv::Serialize, rkyv::Archive)]
 pub struct Engine {
-    entries: Vec<Entry>,
-    geonames: HashMap<u32, CitiesRecord>,
-    capitals: HashMap<String, u32>,
-    country_info_by_code: HashMap<String, CountryRecord>,
+    pub data: IndexData,
     pub metadata: Option<EngineMetadata>,
 
-    #[rkyv(with = rkyv::with::Skip)]
     tree_index_to_geonameid: HashMap<usize, u32>,
-
-    #[rkyv(with = rkyv::with::Skip)]
     tree: ImmutableKdTree<f32, u32, 2, 32>,
-
     #[cfg(feature = "geoip2")]
-    #[rkyv(with = rkyv::with::Skip)]
     geoip2_reader: Option<(&'static Vec<u8>, &'static Reader<'static, City<'static>>)>,
 }
 
@@ -300,11 +291,11 @@ pub fn skip_comment_lines(content: &str) -> String {
 
 impl Engine {
     pub fn get(&self, id: &u32) -> Option<&CitiesRecord> {
-        self.geonames.get(id)
+        self.data.geonames.get(id)
     }
 
     pub fn capital(&self, country_code: &str) -> Option<&CitiesRecord> {
-        if let Some(city_id) = self.capitals.get(&country_code.to_uppercase()) {
+        if let Some(city_id) = self.data.capitals.get(&country_code.to_uppercase()) {
             self.get(city_id)
         } else {
             None
@@ -337,7 +328,7 @@ impl Engine {
                 jaro_winkler(&item.value, &normalized_pattern) as f32
             };
             if score >= min_score {
-                self.geonames.get(&item.id).map(|city| (city, score))
+                self.data.geonames.get(&item.id).map(|city| (city, score))
             } else {
                 None
             }
@@ -348,12 +339,14 @@ impl Engine {
                 let country_ids = countries
                     .iter()
                     .filter_map(|code| {
-                        self.country_info_by_code
+                        self.data
+                            .country_info_by_code
                             .get(&code.as_ref().to_uppercase())
                             .map(|c| &c.info.geonameid)
                     })
                     .collect::<Vec<&u32>>();
-                self.entries
+                self.data
+                    .entries
                     .par_iter()
                     .filter(|item| {
                         if let Some(country_id) = &item.country_id {
@@ -366,6 +359,7 @@ impl Engine {
                     .collect()
             }
             None => self
+                .data
                 .entries
                 .par_iter()
                 .filter_map(filter_by_pattern)
@@ -413,7 +407,7 @@ impl Engine {
         let nearest_limit = std::num::NonZero::new(if countries.is_some() {
             // ugly hack try to fetch nearest cities in requested countries
             // much better is to build index for concrete countries
-            self.geonames.len()
+            self.data.geonames.len()
         } else {
             limit
         })?;
@@ -435,7 +429,7 @@ impl Engine {
 
             i1 = items.iter_mut().filter_map(move |nearest| {
                 let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
-                let city = self.geonames.get(geonameid)?;
+                let city = self.data.geonames.get(geonameid)?;
                 let country = city.country.as_ref()?;
                 if countries.contains(&country.code) {
                     Some((nearest, city))
@@ -447,7 +441,7 @@ impl Engine {
         } else {
             i2 = items.iter_mut().filter_map(|nearest| {
                 let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
-                let city = self.geonames.get(geonameid)?;
+                let city = self.data.geonames.get(geonameid)?;
                 Some((nearest, city))
             });
             &mut i2
@@ -495,9 +489,86 @@ impl Engine {
 
     /// Get country info by iso 2-letter country code.
     pub fn country_info(&self, country_code: &str) -> Option<&CountryRecord> {
-        self.country_info_by_code.get(&country_code.to_uppercase())
+        self.data
+            .country_info_by_code
+            .get(&country_code.to_uppercase())
     }
 
+    // TODO slim mmdb size, we are needs only geonameid
+    /// **unsafe** method to initialize geoip2 buffer and reader
+    #[cfg(feature = "geoip2")]
+    pub fn load_geoip2<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // consume and release memory of previously leaked buffer and reader
+        if let Some((b, r)) = self.geoip2_reader.take() {
+            // make Box<T> from raw pointer to drop it
+            let b = b as *const Vec<u8>;
+            let _ = unsafe { Box::from_raw(b as *mut Vec<u8>) };
+            let r = r as *const Reader<'static, City<'static>>;
+            let _ = unsafe { Box::from_raw(r as *mut Reader<'static, City<'static>>) };
+        }
+
+        // leak geoip buffer and reader with reference to buffer
+        let buffer = std::fs::read(path)?;
+        let buffer: &'static Vec<u8> = Box::leak(Box::new(buffer));
+        let reader = Reader::<City>::from_bytes(buffer).map_err(GeoIP2Error)?;
+        let reader: &'static Reader<City> = Box::leak(Box::new(reader));
+
+        self.geoip2_reader = Some((buffer, reader));
+
+        Ok(())
+    }
+
+    #[cfg(feature = "geoip2")]
+    pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&CitiesRecord> {
+        match self.geoip2_reader.as_ref() {
+            Some((_, reader)) => {
+                let result = reader.lookup(addr).ok()?;
+                let city = result.city?;
+                let id = city.geoname_id?;
+                self.data.geonames.get(&id)
+            }
+            None => {
+                #[cfg(feature = "tracing")]
+                tracing::warn!("Geoip2 reader is't configured!");
+                None
+            }
+        }
+    }
+}
+
+fn split_content_to_n_parts(content: &str, n: usize) -> Vec<String> {
+    if n == 0 || n == 1 {
+        return vec![content.to_owned()];
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+    lines.chunks(n).map(|chunk| chunk.join("\n")).collect()
+}
+
+#[cfg(feature = "geoip2")]
+struct GeoIP2Error(geoip2::Error);
+
+#[cfg(feature = "geoip2")]
+impl std::error::Error for GeoIP2Error {}
+
+#[cfg(feature = "geoip2")]
+impl std::fmt::Debug for GeoIP2Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+#[cfg(feature = "geoip2")]
+impl std::fmt::Display for GeoIP2Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GeoIP2 Error {:?}", self.0)
+    }
+}
+
+impl IndexData {
     pub fn new_from_files<P: AsRef<std::path::Path>>(
         SourceFileOptions {
             cities,
@@ -508,7 +579,7 @@ impl Engine {
             admin2_codes,
         }: SourceFileOptions<P>,
     ) -> Result<Self, Box<dyn Error>> {
-        Engine::new_from_files_content(SourceFileContentOptions {
+        Self::new_from_files_content(SourceFileContentOptions {
             cities: std::fs::read_to_string(cities)?,
             names: if let Some(p) = names {
                 Some(std::fs::read_to_string(p)?)
@@ -533,7 +604,6 @@ impl Engine {
             filter_languages,
         })
     }
-
     pub fn new_from_files_content(
         SourceFileContentOptions {
             cities,
@@ -1002,27 +1072,9 @@ impl Engine {
         geonames.sort_unstable_by_key(|item| item.id);
         geonames.dedup_by_key(|item| item.id);
 
-        let tree_index_to_geonameid = HashMap::from_iter(
-            geonames
-                .iter()
-                .enumerate()
-                .map(|(index, item)| (index, item.id)),
-        );
-
-        let tree = ImmutableKdTree::new_from_slice(
-            geonames
-                .iter()
-                .map(|item| [item.latitude, item.longitude])
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
-
-        let engine = Engine {
+        let data = IndexData {
             geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
-            tree_index_to_geonameid,
-            tree,
             entries,
-            metadata: None,
             country_info_by_code: if let Some(country_by_code) = country_by_code {
                 HashMap::from_iter(country_by_code.into_iter().map(|(code, country)| {
                     let country_record = CountryRecord {
@@ -1048,98 +1100,26 @@ impl Engine {
                 HashMap::new()
             },
             capitals,
-            #[cfg(feature = "geoip2")]
-            geoip2_reader: None,
         };
 
         #[cfg(feature = "tracing")]
         tracing::info!(
-            "Engine ready (entries {}, geonames {}, capitals {}). took {}ms",
-            engine.entries.len(),
-            engine.geonames.len(),
-            engine.capitals.len(),
+            "Index data ready (entries {}, geonames {}, capitals {}). took {}ms",
+            data.entries.len(),
+            data.geonames.len(),
+            data.capitals.len(),
             now.elapsed().as_millis()
         );
-        Ok(engine)
-    }
-
-    // TODO slim mmdb size, we are needs only geonameid
-    /// **unsafe** method to initialize geoip2 buffer and reader
-    #[cfg(feature = "geoip2")]
-    pub fn load_geoip2<P: AsRef<std::path::Path>>(
-        &mut self,
-        path: P,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // consume and release memory of previously leaked buffer and reader
-        if let Some((b, r)) = self.geoip2_reader.take() {
-            // make Box<T> from raw pointer to drop it
-            let b = b as *const Vec<u8>;
-            let _ = unsafe { Box::from_raw(b as *mut Vec<u8>) };
-            let r = r as *const Reader<'static, City<'static>>;
-            let _ = unsafe { Box::from_raw(r as *mut Reader<'static, City<'static>>) };
-        }
-
-        // leak geoip buffer and reader with reference to buffer
-        let buffer = std::fs::read(path)?;
-        let buffer: &'static Vec<u8> = Box::leak(Box::new(buffer));
-        let reader = Reader::<City>::from_bytes(buffer).map_err(GeoIP2Error)?;
-        let reader: &'static Reader<City> = Box::leak(Box::new(reader));
-
-        self.geoip2_reader = Some((buffer, reader));
-
-        Ok(())
-    }
-
-    #[cfg(feature = "geoip2")]
-    pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&CitiesRecord> {
-        match self.geoip2_reader.as_ref() {
-            Some((_, reader)) => {
-                let result = reader.lookup(addr).ok()?;
-                let city = result.city?;
-                let id = city.geoname_id?;
-                self.geonames.get(&id)
-            }
-            None => {
-                #[cfg(feature = "tracing")]
-                tracing::warn!("Geoip2 reader is't configured!");
-                None
-            }
-        }
+        Ok(data)
     }
 }
 
-fn split_content_to_n_parts(content: &str, n: usize) -> Vec<String> {
-    if n == 0 || n == 1 {
-        return vec![content.to_owned()];
-    }
+impl From<IndexData> for Engine {
+    fn from(data: IndexData) -> Engine {
+        #[cfg(feature = "tracing")]
+        let now = Instant::now();
 
-    let lines: Vec<&str> = content.lines().collect();
-    lines.chunks(n).map(|chunk| chunk.join("\n")).collect()
-}
-
-#[cfg(feature = "geoip2")]
-struct GeoIP2Error(geoip2::Error);
-
-#[cfg(feature = "geoip2")]
-impl std::error::Error for GeoIP2Error {}
-
-#[cfg(feature = "geoip2")]
-impl std::fmt::Debug for GeoIP2Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-
-#[cfg(feature = "geoip2")]
-impl std::fmt::Display for GeoIP2Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GeoIP2 Error {:?}", self.0)
-    }
-}
-
-impl From<EngineDump> for Engine {
-    fn from(engine_dump: EngineDump) -> Engine {
-        let mut items = engine_dump
+        let mut items = data
             .geonames
             .values()
             .map(|record| (record.id, [record.latitude, record.longitude]))
@@ -1162,14 +1142,14 @@ impl From<EngineDump> for Engine {
                 .as_slice(),
         );
 
+        #[cfg(feature = "tracing")]
+        tracing::info!("Engine ready. took {}ms", now.elapsed().as_millis());
+
         Engine {
-            entries: engine_dump.entries,
-            geonames: engine_dump.geonames,
-            capitals: engine_dump.capitals,
-            country_info_by_code: engine_dump.country_info_by_code,
+            data,
+            metadata: None,
             tree_index_to_geonameid,
             tree,
-            metadata: engine_dump.metadata,
             #[cfg(feature = "geoip2")]
             geoip2_reader: None,
         }
