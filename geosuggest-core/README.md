@@ -15,7 +15,7 @@ Usage example
 use tokio;
 use anyhow::Result;
 
-use geosuggest_core::{Engine, storage::{self, IndexStorage}};
+use geosuggest_core::{Engine, storage};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]

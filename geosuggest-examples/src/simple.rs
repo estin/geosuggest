@@ -1,10 +1,7 @@
 use anyhow::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{
-    storage::{self, IndexStorage},
-    Engine,
-};
+use geosuggest_core::{storage, Engine};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]

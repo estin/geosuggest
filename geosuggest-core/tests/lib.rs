@@ -1,7 +1,4 @@
-use geosuggest_core::{
-    storage::{self, IndexStorage},
-    Engine, EngineMetadata, SourceFileOptions,
-};
+use geosuggest_core::{storage, Engine, EngineMetadata, SourceFileOptions};
 use std::{env::temp_dir, error::Error};
 
 #[cfg(feature = "geoip2")]
