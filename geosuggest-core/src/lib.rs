@@ -15,22 +15,16 @@ use rayon::prelude::*;
 // use serde::{Deserialize, Serialize};
 use strsim::jaro_winkler;
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 use std::net::IpAddr;
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 use geoip2::{City, Reader};
 
-#[cfg(feature = "oaph_support")]
+#[cfg(feature = "oaph")]
 use oaph::schemars::{self, JsonSchema};
 
 pub mod storage;
-
-// #[cfg(any(feature = "serde_json", feature = "bincode"))]
-// use storage::{Deserialize, Serialize};
-
-// #[cfg(feature = "rkyv")]
-// use storage::{Archive, Deserialize, Serialize};
 
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
@@ -51,11 +45,6 @@ pub struct SourceFileContentOptions<'a> {
 }
 
 // code, name, name ascii, geonameid
-// #[cfg_attr(
-//     all(feature = "serde_json", feature = "bincode"),
-//     derive(storage::Deserialize)
-// )]
-// #[cfg_attr(feature = "rkyv", derive(storage::Deserialize, storage::Archive))]
 #[derive(Debug, Clone, serde::Deserialize)]
 struct Admin1CodeRecordRaw {
     code: String,
@@ -65,11 +54,6 @@ struct Admin1CodeRecordRaw {
 }
 
 // code, name, name ascii, geonameid
-// #[cfg_attr(
-//     all(feature = "serde_json", feature = "bincode"),
-//     derive(storage::Deserialize)
-// )]
-// #[cfg_attr(feature = "rkyv", derive(storage::Deserialize, storage::Archive))]
 #[derive(Debug, Clone, serde::Deserialize)]
 struct Admin2CodeRecordRaw {
     code: String,
@@ -78,16 +62,8 @@ struct Admin2CodeRecordRaw {
     geonameid: u32,
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(storage::Serialize, storage::Deserialize, storage::Archive)
-)]
-#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
+#[cfg_attr(feature = "oaph", derive(JsonSchema))]
 pub struct AdminDivision {
     pub id: u32,
     pub code: String,
@@ -116,11 +92,6 @@ pub struct AdminDivision {
 // timezone          : the iana timezone id (see file timeZone.txt) varchar(40)
 // modification date : date of last modification in yyyy-MM-dd format
 
-// #[cfg_attr(
-//     all(feature = "serde_json", feature = "bincode"),
-//     derive(storage::Deserialize)
-// )]
-// #[cfg_attr(feature = "rkyv", derive(storage::Deserialize, storage::Archive))]
 #[derive(Debug, serde::Deserialize)]
 struct CitiesRecordRaw {
     geonameid: u32,
@@ -147,15 +118,7 @@ struct CitiesRecordRaw {
 // CounntryInfo
 // http://download.geonames.org/export/dump/countryInfo.txt
 // ISO	ISO3	ISO-Numeric	fips	Country	Capital	Area(in sq km)	Population	Continent	tld	CurrencyCode	CurrencyName	Phone	Postal Code Format	Postal Code Regex	Languages	geonameid	neighbours	EquivalentFipsCode
-// #[cfg_attr(
-//     all(feature = "serde_json", feature = "bincode"),
-//     derive(storage::Serialize, storage::Deserialize)
-// )]
-// #[cfg_attr(
-//     feature = "rkyv",
-//     derive(storage::Serialize, storage::Deserialize, storage::Archive)
-// )]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct CountryRecordRaw {
     pub iso: String,
     pub iso3: String,
@@ -178,15 +141,7 @@ pub struct CountryRecordRaw {
     pub equivalent_fips_code: String,
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(storage::Serialize, storage::Deserialize, storage::Archive)
-)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct CountryRecord {
     /// geonames country info
     pub info: CountryRecordRaw,
@@ -210,11 +165,6 @@ pub struct CountryRecord {
 // isHistoric        : '1', if this alternate name is historic and was used in the past. Example 'Bombay' for 'Mumbai'.
 // from		  : from period when the name was used
 // to		  : to period when the name was used
-// #[cfg_attr(
-//     all(feature = "serde_json", feature = "bincode"),
-//     derive(storage::Deserialize)
-// )]
-// #[cfg_attr(feature = "rkyv", derive(storage::Deserialize, storage::Archive))]
 #[derive(Debug, serde::Deserialize)]
 struct AlternateNamesRaw {
     _alternate_name_id: u32,
@@ -229,16 +179,8 @@ struct AlternateNamesRaw {
     _to: String,
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(storage::Serialize, storage::Deserialize, storage::Archive)
-)]
-#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
-#[derive(Debug, Clone)]
+#[cfg_attr(feature = "oaph", derive(JsonSchema))]
+#[derive(Debug, Clone, serde::Serialize, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct Country {
     pub id: u32,
     pub code: String,
@@ -255,16 +197,8 @@ impl From<&CountryRecordRaw> for Country {
     }
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(storage::Serialize, storage::Deserialize, storage::Archive)
-)]
-#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
-#[derive(Debug, Clone)]
+#[cfg_attr(feature = "oaph", derive(JsonSchema))]
+#[derive(Debug, Clone, serde::Serialize, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct CitiesRecord {
     pub id: u32,
     pub name: String,
@@ -282,12 +216,7 @@ pub struct CitiesRecord {
     pub population: u32,
 }
 
-// #[cfg_attr(
-//     any(feature = "serde_json", feature = "bincode"),
-//     derive(storage::Deserialize)
-// )]
-// #[cfg_attr(feature = "rkyv", derive(storage::Deserialize, storage::Archive))]
-#[cfg_attr(feature = "oaph_support", derive(JsonSchema))]
+#[cfg_attr(feature = "oaph", derive(JsonSchema))]
 #[derive(Debug, serde::Serialize)]
 pub struct ReverseItem<'a> {
     pub city: &'a CitiesRecord,
@@ -295,15 +224,7 @@ pub struct ReverseItem<'a> {
     pub score: f32,
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(Clone, storage::Serialize, storage::Deserialize, storage::Archive)
-)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct EngineSourceMetadata {
     pub cities: String,
     pub names: Option<String>,
@@ -314,20 +235,12 @@ pub struct EngineSourceMetadata {
     pub etag: HashMap<String, String>,
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(Clone, storage::Serialize, storage::Deserialize, storage::Archive)
-)]
-#[derive(Debug)]
+#[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct EngineMetadata {
     /// Index was built on version
     pub geosuggest_version: String,
     /// Creation time
-    #[cfg_attr(feature = "rkyv", rkyv(with = storage::with::AsUnixTime))]
+    #[rkyv(with = rkyv::with::AsUnixTime)]
     pub created_at: std::time::SystemTime,
     /// Sources metadata
     pub source: EngineSourceMetadata,
@@ -346,14 +259,7 @@ impl Default for EngineMetadata {
     }
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(Clone, storage::Deserialize, storage::Archive)
-)]
+#[derive(Clone, rkyv::Deserialize, rkyv::Archive)]
 struct EngineDump {
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
@@ -362,25 +268,14 @@ struct EngineDump {
     metadata: Option<EngineMetadata>,
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize, storage::Deserialize)
-)]
-#[cfg_attr(
-    feature = "rkyv",
-    derive(Clone, storage::Serialize, storage::Deserialize, storage::Archive)
-)]
+#[derive(Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 struct Entry {
     id: u32,                 // geoname id
     value: String,           // searchable value
     country_id: Option<u32>, // geoname country id
 }
 
-#[cfg_attr(
-    any(feature = "serde_json", feature = "bincode"),
-    derive(storage::Serialize)
-)]
-#[cfg_attr(feature = "rkyv", derive(Clone, storage::Serialize, storage::Archive))]
+#[derive(Clone, rkyv::Serialize, rkyv::Archive)]
 pub struct Engine {
     entries: Vec<Entry>,
     geonames: HashMap<u32, CitiesRecord>,
@@ -388,26 +283,14 @@ pub struct Engine {
     country_info_by_code: HashMap<String, CountryRecord>,
     pub metadata: Option<EngineMetadata>,
 
-    #[cfg_attr(
-        any(feature = "serde_json", feature = "bincode"),
-        serde(skip_serializing)
-    )]
-    #[cfg_attr(feature = "rkyv", rkyv(with = storage::with::Skip))]
+    #[rkyv(with = rkyv::with::Skip)]
     tree_index_to_geonameid: HashMap<usize, u32>,
 
-    #[cfg_attr(
-        any(feature = "serde_json", feature = "bincode"),
-        serde(skip_serializing)
-    )]
-    #[cfg_attr(feature = "rkyv", rkyv(with = storage::with::Skip))]
+    #[rkyv(with = rkyv::with::Skip)]
     tree: ImmutableKdTree<f32, u32, 2, 32>,
 
-    #[cfg(feature = "geoip2_support")]
-    #[cfg_attr(
-        any(feature = "serde_json", feature = "bincode"),
-        serde(skip_serializing)
-    )]
-    #[cfg_attr(feature = "rkyv", rkyv(with = storage::with::Skip))]
+    #[cfg(feature = "geoip2")]
+    #[rkyv(with = rkyv::with::Skip)]
     geoip2_reader: Option<(&'static Vec<u8>, &'static Reader<'static, City<'static>>)>,
 }
 
@@ -1165,7 +1048,7 @@ impl Engine {
                 HashMap::new()
             },
             capitals,
-            #[cfg(feature = "geoip2_support")]
+            #[cfg(feature = "geoip2")]
             geoip2_reader: None,
         };
 
@@ -1182,7 +1065,7 @@ impl Engine {
 
     // TODO slim mmdb size, we are needs only geonameid
     /// **unsafe** method to initialize geoip2 buffer and reader
-    #[cfg(feature = "geoip2_support")]
+    #[cfg(feature = "geoip2")]
     pub fn load_geoip2<P: AsRef<std::path::Path>>(
         &mut self,
         path: P,
@@ -1207,7 +1090,7 @@ impl Engine {
         Ok(())
     }
 
-    #[cfg(feature = "geoip2_support")]
+    #[cfg(feature = "geoip2")]
     pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&CitiesRecord> {
         match self.geoip2_reader.as_ref() {
             Some((_, reader)) => {
@@ -1234,20 +1117,20 @@ fn split_content_to_n_parts(content: &str, n: usize) -> Vec<String> {
     lines.chunks(n).map(|chunk| chunk.join("\n")).collect()
 }
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 struct GeoIP2Error(geoip2::Error);
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 impl std::error::Error for GeoIP2Error {}
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 impl std::fmt::Debug for GeoIP2Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.0)
     }
 }
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 impl std::fmt::Display for GeoIP2Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "GeoIP2 Error {:?}", self.0)
@@ -1287,7 +1170,7 @@ impl From<EngineDump> for Engine {
             tree_index_to_geonameid,
             tree,
             metadata: engine_dump.metadata,
-            #[cfg(feature = "geoip2_support")]
+            #[cfg(feature = "geoip2")]
             geoip2_reader: None,
         }
     }

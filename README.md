@@ -48,13 +48,13 @@ Build index file
 $ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --features=cli,tracing -- \
     from-urls \
     --languages=ru,uk,be,zh,ja \
-    --output=/tmp/geosuggest-index.bincode
+    --output=/tmp/geosuggest-index.rkyv
 ```
 
 Run
 
 ```console
-$ GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.bincode \
+$ GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.rkyv \
     GEOSUGGEST__HOST=127.0.0.1 \
     GEOSUGGEST__PORT=8080 \
     GEOSUGGEST__URL_PATH_PREFIX="/" \

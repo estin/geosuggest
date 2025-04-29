@@ -4,7 +4,7 @@ use geosuggest_core::{
 };
 use std::{env::temp_dir, error::Error};
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 use std::{net::IpAddr, str::FromStr};
 
 fn get_engine(
@@ -97,7 +97,7 @@ fn capital() -> Result<(), Box<dyn Error>> {
 }
 
 #[test_log::test]
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
     let mut engine = get_engine(None, None, None, vec![])?;
     engine.load_geoip2("tests/misc/GeoLite2-City-Test.mmdb")?;
@@ -110,44 +110,9 @@ fn geoip2_lookup() -> Result<(), Box<dyn Error>> {
 }
 
 #[test_log::test]
-fn json_build_dump_load() -> Result<(), Box<dyn Error>> {
-    let filepath = temp_dir().join("test-engine.json");
+fn build_dump_load() -> Result<(), Box<dyn Error>> {
+    let filepath = temp_dir().join("test-engine.rkyv");
     let storage = storage::Storage::new();
-    // build
-    let engine = get_engine(None, None, None, vec![])?;
-
-    // dump
-    storage.dump_to(&filepath, &engine)?;
-
-    // check metadata
-    let metadata = storage.read_metadata(&filepath)?;
-    assert!(metadata.is_some());
-
-    // load
-    let from_dump = storage.load_from(&filepath)?;
-
-    assert_eq!(
-        engine.suggest::<&str>("voronezh", 100, None, None).len(),
-        from_dump.suggest::<&str>("voronezh", 100, None, None).len(),
-    );
-
-    let coords = (51.6372, 39.1937);
-    assert_eq!(
-        engine.reverse::<&str>(coords, 1, None, None).unwrap()[0]
-            .city
-            .id,
-        from_dump.reverse::<&str>(coords, 1, None, None).unwrap()[0]
-            .city
-            .id,
-    );
-
-    Ok(())
-}
-
-#[test_log::test]
-fn bincode_build_dump_load() -> Result<(), Box<dyn Error>> {
-    let filepath = temp_dir().join("test-engine.bincode");
-    let storage = storage::bincode::Storage::new();
     // build
     let engine = get_engine(None, None, None, vec![])?;
 

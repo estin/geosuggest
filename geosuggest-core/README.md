@@ -36,14 +36,14 @@ async fn main() -> Result<()> {
 }
 
 async fn load_engine() -> Result<Engine> {
-    let index_file = std::path::Path::new("/tmp/geosuggest-index.bincode");
+    let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
 
     let updater = IndexUpdater::new(IndexUpdaterSettings {
         names: None, // no multilang support
         ..Default::default()
     })?;
 
-    let storage = storage::bincode::Storage::new();
+    let storage = storage::Storage::new();
 
     Ok(if index_file.exists() {
         // load existed index

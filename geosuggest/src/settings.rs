@@ -13,7 +13,7 @@ pub struct Settings {
     pub index_file: String,
     pub static_dir: Option<String>,
     pub url_path_prefix: String,
-    #[cfg(feature = "geoip2_support")]
+    #[cfg(feature = "geoip2")]
     pub geoip2_file: Option<String>,
 }
 
@@ -55,7 +55,7 @@ impl Default for Settings {
             index_file: "".to_string(),
             static_dir: None,
             url_path_prefix: "/".to_string(),
-            #[cfg(feature = "geoip2_support")]
+            #[cfg(feature = "geoip2")]
             geoip2_file: None,
         }
     }

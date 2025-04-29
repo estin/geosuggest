@@ -38,7 +38,6 @@ async fn main() -> Result<()> {
 
 async fn load_engine() -> Result<Engine> {
     let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
-    // let index_file = std::path::Path::new("/tmp/geosuggest-index.bincode");
 
     let updater = IndexUpdater::new(IndexUpdaterSettings {
         filter_languages: vec!["ru", "ar"],

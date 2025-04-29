@@ -5,9 +5,9 @@ use std::time::Instant;
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 use std::net::IpAddr;
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 use std::str::FromStr;
 
 use ntex::web::{self, middleware, App, HttpRequest, HttpResponse};
@@ -83,7 +83,7 @@ pub struct ReverseQuery {
     countries: Option<String>,
 }
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GeoIP2Query {
     /// IP to check, if not declared then `Forwarded` header will used or peer ip as last chance
@@ -154,7 +154,7 @@ pub struct CityResultItem<'a> {
     population: u32,
 }
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 #[derive(Serialize, JsonSchema)]
 pub struct GeoIP2Result<'a> {
     city: Option<CityResultItem<'a>>,
@@ -314,7 +314,7 @@ pub async fn reverse(
     })
 }
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 pub async fn geoip2(
     engine: web::types::State<Arc<Engine>>,
     web::types::Query(query): web::types::Query<GeoIP2Query>,
@@ -387,7 +387,7 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
         .schema::<SuggestResult>("SuggestResult")?
         .schema::<ReverseResult>("ReverseResult")?;
 
-    #[cfg(feature = "geoip2_support")]
+    #[cfg(feature = "geoip2")]
     let aoph = {
         aoph.query_params::<GeoIP2Query>("GeoIP2Query")?
             .schema::<GeoIP2Result>("GeoIP2Result")?
@@ -446,13 +446,13 @@ async fn main() -> std::io::Result<()> {
         panic!("Please set `index_file`");
     }
 
-    let storage = storage::bincode::Storage::new();
+    let storage = storage::Storage::new();
 
     let mut engine = storage
         .load_from(&settings.index_file)
         .unwrap_or_else(|e| panic!("On build engine from file: {} - {}", settings.index_file, e));
 
-    #[cfg(feature = "geoip2_support")]
+    #[cfg(feature = "geoip2")]
     if let Some(geoip2_file) = settings.geoip2_file.as_ref() {
         engine
             .load_geoip2(geoip2_file)
@@ -485,7 +485,7 @@ async fn main() -> std::io::Result<()> {
                         web::resource("/api/city/capital").to(capital),
                         web::resource("/api/city/suggest").to(suggest),
                         web::resource("/api/city/reverse").to(reverse),
-                        #[cfg(feature = "geoip2_support")]
+                        #[cfg(feature = "geoip2")]
                         web::resource("/api/city/geoip2").to(geoip2),
                         // serve openapi3 yaml and ui from files
                         fs::Files::new("/openapi3.yaml", std::env::temp_dir())

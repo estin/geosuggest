@@ -144,7 +144,7 @@ async fn main() -> Result<()> {
                 .await
                 .expect("On build index");
 
-            storage::bincode::Storage::new()
+            storage::Storage::new()
                 .dump_to(&args.output, &engine)
                 .map_err(|e| anyhow::anyhow!("Failed to dump index: {e}"))?;
         }
@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
             })
             .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
-            storage::bincode::Storage::new()
+            storage::Storage::new()
                 .dump_to(&args.output, &engine)
                 .map_err(|e| anyhow::anyhow!("Failed to dump index: {e}"))?;
         }

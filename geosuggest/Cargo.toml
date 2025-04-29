@@ -18,8 +18,8 @@ name = "geosuggest"
 path = "src/main.rs"
 
 [features]
-default = ["tokio", "geoip2_support", "tracing"]
-geoip2_support = ["geosuggest-core/geoip2_support"]
+default = ["tokio", "geoip2", "tracing"]
+geoip2 = ["geosuggest-core/geoip2"]
 neon = ["ntex/neon"]
 tokio = ["ntex/tokio"]
 tracing = ["dep:tracing", "dep:tracing-subscriber", "geosuggest-core/tracing"]
@@ -33,7 +33,7 @@ ntex-files.workspace = true
 ntex-cors.workspace = true
 config.workspace = true
 
-geosuggest-core = { path = "../geosuggest-core", version = "0.6", features = ["oaph_support"] }
+geosuggest-core = { path = "../geosuggest-core", version = "0.6", features = ["oaph"] }
 
 # openapi3
 oaph.workspace = true 

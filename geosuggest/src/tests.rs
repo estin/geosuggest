@@ -15,7 +15,7 @@ fn app_config(cfg: &mut ServiceConfig) {
     })
     .unwrap();
 
-    #[cfg(feature = "geoip2_support")]
+    #[cfg(feature = "geoip2")]
     engine
         .load_geoip2("../geosuggest-core/tests/misc/GeoLite2-City-Test.mmdb")
         .unwrap();
@@ -26,7 +26,7 @@ fn app_config(cfg: &mut ServiceConfig) {
         web::resource("/capital").to(super::capital),
         web::resource("/suggest").to(super::suggest),
         web::resource("/reverse").to(super::reverse),
-        #[cfg(feature = "geoip2_support")]
+        #[cfg(feature = "geoip2")]
         web::resource("/geoip2").to(super::geoip2),
     ));
 }
@@ -280,7 +280,7 @@ async fn api_reverse_lang() -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(feature = "geoip2_support")]
+#[cfg(feature = "geoip2")]
 #[test_log::test(ntex::test)]
 async fn api_geoip2_lang() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;

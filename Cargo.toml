@@ -26,7 +26,6 @@ strsim     = "0.11"
 kiddo      = { version = "5.0", default-features = false }
 geoip2     = "0.1.7"
 
-bincode   = { version = "2.0", features = ["serde"] }
 rkyv      = { version = "0.8" }
 itertools = "0.14"
 
