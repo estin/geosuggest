@@ -1,4 +1,7 @@
-use geosuggest_core::{Engine, IndexData, SourceFileOptions};
+use geosuggest_core::{
+    index::{IndexData, SourceFileOptions},
+    Engine,
+};
 use ntex::web::{test, App, Error, ServiceConfig};
 use ntex::{http, web};
 

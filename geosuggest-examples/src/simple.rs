@@ -49,8 +49,9 @@ async fn load_engine() -> Result<Engine> {
             .read_metadata(index_file)
             .map_err(|e| anyhow::anyhow!("On load index metadata from {index_file:?}: {e}"))?;
 
-        match metadata {
-            Some(m) if updater.has_updates(&m).await? => {
+        // check updates
+        let mut engine = match &metadata {
+            Some(m) if updater.has_updates(m).await? => {
                 let engine = updater.build().await?;
                 storage
                     .dump_to(index_file, &engine)
@@ -60,7 +61,11 @@ async fn load_engine() -> Result<Engine> {
             _ => storage
                 .load_from(index_file)
                 .map_err(|e| anyhow::anyhow!("On load index from {index_file:?}: {e}"))?,
-        }
+        };
+
+        // attach metadata
+        engine.metadata = metadata;
+        engine
     } else {
         // initial
         let engine = updater.build().await?;

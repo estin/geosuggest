@@ -15,7 +15,7 @@ use ntex_cors::Cors;
 use ntex_files as fs;
 use serde::{Deserialize, Serialize};
 
-use geosuggest_core::{storage, CitiesRecord, Engine};
+use geosuggest_core::{index::CitiesRecord, storage, Engine};
 
 // openapi3
 use oaph::{

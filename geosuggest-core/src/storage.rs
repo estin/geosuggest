@@ -1,4 +1,7 @@
-use crate::{ArchivedEngineMetadata, ArchivedIndexData, IndexData};
+use crate::{
+    index::{ArchivedIndexData, IndexData},
+    ArchivedEngineMetadata,
+};
 use crate::{Engine, EngineMetadata};
 use rkyv;
 use rkyv::{deserialize, rancor::Error};
@@ -33,6 +36,8 @@ impl Storage {
     {
         let metadata = rkyv::to_bytes::<Error>(&engine.metadata)?;
         buff.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        #[cfg(feature = "tracing")]
+        tracing::info!("Write metadata {:#?}", engine.metadata);
         buff.write_all(&metadata)?;
         let data = rkyv::to_bytes::<Error>(&engine.data)?;
         buff.write_all(&data)?;

@@ -3,8 +3,12 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
+#[cfg(feature = "tracing")]
+use std::time::Instant;
+
 use geosuggest_core::{
-    Engine, EngineMetadata, EngineSourceMetadata, IndexData, SourceFileContentOptions,
+    index::{IndexData, SourceFileContentOptions},
+    Engine, EngineMetadata, EngineSourceMetadata,
 };
 use serde::Serialize;
 
@@ -192,6 +196,9 @@ impl<'a> IndexUpdater<'a> {
         #[cfg(feature = "tracing")]
         tracing::info!("Try to build index...");
 
+        #[cfg(feature = "tracing")]
+        let now = Instant::now();
+
         let data = IndexData::new_from_files_content(SourceFileContentOptions {
             cities: String::from_utf8(
                 results
@@ -242,6 +249,9 @@ impl<'a> IndexUpdater<'a> {
             },
             ..Default::default()
         });
+
+        #[cfg(feature = "tracing")]
+        tracing::info!("Engine ready. took {}ms", now.elapsed().as_millis());
 
         Ok(engine)
     }
