@@ -8,6 +8,8 @@ use kiddo::{self, SquaredEuclidean};
 use kiddo::immutable::float::kdtree::ImmutableKdTree;
 
 use rayon::prelude::*;
+use rkyv::rend::{f32_le, u32_le};
+use rkyv::string::ArchivedString;
 use strsim::jaro_winkler;
 
 #[cfg(feature = "geoip2")]
@@ -22,12 +24,22 @@ use oaph::schemars::{self, JsonSchema};
 pub mod index;
 pub mod storage;
 
-use index::{CitiesRecord, CountryRecord, Entry, IndexData};
+use index::{
+    ArchivedCitiesRecord, ArchivedCountryRecord, ArchivedEntry, ArchivedIndexData, CitiesRecord,
+    CountryRecord, Entry, IndexData,
+};
 
 #[cfg_attr(feature = "oaph", derive(JsonSchema))]
 #[derive(Debug, serde::Serialize)]
 pub struct ReverseItem<'a> {
     pub city: &'a index::CitiesRecord,
+    pub distance: f32,
+    pub score: f32,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ArchivedReverseItem<'a> {
+    pub city: &'a index::ArchivedCitiesRecord,
     pub distance: f32,
     pub score: f32,
 }
@@ -68,24 +80,25 @@ impl Default for EngineMetadata {
 }
 
 // #[derive(Clone, rkyv::Serialize, rkyv::Archive)]
-pub struct Engine {
-    pub data: IndexData,
+pub struct Engine<'a> {
+    pub data: &'a ArchivedIndexData,
     pub metadata: Option<EngineMetadata>,
 
-    tree_index_to_geonameid: HashMap<usize, u32>,
+    tree_index_to_geonameid: HashMap<usize, u32_le>,
     tree: ImmutableKdTree<f32, u32, 2, 32>,
     #[cfg(feature = "geoip2")]
     geoip2_reader: Option<(&'static Vec<u8>, &'static Reader<'static, City<'static>>)>,
 }
 
-impl Engine {
-    pub fn get(&self, id: &u32) -> Option<&CitiesRecord> {
-        self.data.geonames.get(id)
+impl<'a> Engine<'a> {
+    pub fn get(&self, id: &u32) -> Option<&ArchivedCitiesRecord> {
+        self.data.geonames.get(&u32_le::from_native(*id))
     }
 
-    pub fn capital(&self, country_code: &str) -> Option<&CitiesRecord> {
-        if let Some(city_id) = self.data.capitals.get(&country_code.to_uppercase()) {
-            self.get(city_id)
+    /// Get capital by uppercase country code
+    pub fn capital(&self, country_code: &str) -> Option<&ArchivedCitiesRecord> {
+        if let Some(city_id) = self.data.capitals.get(country_code) {
+            self.data.geonames.get(city_id)
         } else {
             None
         }
@@ -102,7 +115,7 @@ impl Engine {
         limit: usize,
         min_score: Option<f32>,
         countries: Option<&[T]>,
-    ) -> Vec<&CitiesRecord> {
+    ) -> Vec<&ArchivedCitiesRecord> {
         if limit == 0 {
             return Vec::new();
         }
@@ -110,7 +123,7 @@ impl Engine {
         let min_score = min_score.unwrap_or(0.8);
         let normalized_pattern = pattern.to_lowercase();
 
-        let filter_by_pattern = |item: &Entry| -> Option<(&CitiesRecord, f32)> {
+        let filter_by_pattern = |item: &ArchivedEntry| -> Option<(&ArchivedCitiesRecord, f32)> {
             let score = if item.value.starts_with(&normalized_pattern) {
                 1.0
             } else {
@@ -123,26 +136,25 @@ impl Engine {
             }
         };
 
-        let mut result: Vec<(&CitiesRecord, f32)> = match &countries {
+        let mut result: Vec<(&ArchivedCitiesRecord, f32)> = match &countries {
             Some(countries) => {
                 let country_ids = countries
                     .iter()
                     .filter_map(|code| {
                         self.data
                             .country_info_by_code
-                            .get(&code.as_ref().to_uppercase())
+                            .get(code.as_ref())
                             .map(|c| &c.info.geonameid)
                     })
-                    .collect::<Vec<&u32>>();
+                    .collect::<Vec<_>>();
                 self.data
                     .entries
                     .par_iter()
                     .filter(|item| {
-                        if let Some(country_id) = &item.country_id {
-                            country_ids.contains(&country_id)
-                        } else {
-                            false
-                        }
+                        item.country_id
+                            .as_ref()
+                            .map(|id| country_ids.contains(&id))
+                            .unwrap_or_default()
                     })
                     .filter_map(filter_by_pattern)
                     .collect()
@@ -174,7 +186,7 @@ impl Engine {
             .unique_by(|item| item.0.id)
             .take(limit)
             .map(|item| item.0)
-            .collect::<Vec<&CitiesRecord>>()
+            .collect::<Vec<_>>()
     }
 
     /// Find the nearest cities by coordinates.
@@ -188,7 +200,7 @@ impl Engine {
         limit: usize,
         k: Option<f32>,
         countries: Option<&[T]>,
-    ) -> Option<Vec<ReverseItem>> {
+    ) -> Option<Vec<ArchivedReverseItem>> {
         if limit == 0 {
             return None;
         }
@@ -208,40 +220,40 @@ impl Engine {
             .tree
             .nearest_n::<SquaredEuclidean>(&[loc.0, loc.1], nearest_limit);
 
-        let items: &mut dyn Iterator<Item = (_, &CitiesRecord)> = if let Some(countries) = countries
-        {
-            // normalize
-            let countries = countries
-                .iter()
-                .map(|code| code.as_ref().to_uppercase())
-                .collect::<Vec<_>>();
+        let items: &mut dyn Iterator<Item = (_, &ArchivedCitiesRecord)> =
+            if let Some(countries) = countries {
+                // normalize
+                let countries = countries
+                    .iter()
+                    .map(|code| code.as_ref())
+                    .collect::<Vec<_>>();
 
-            i1 = items.iter_mut().filter_map(move |nearest| {
-                let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
-                let city = self.data.geonames.get(geonameid)?;
-                let country = city.country.as_ref()?;
-                if countries.contains(&country.code) {
+                i1 = items.iter_mut().filter_map(move |nearest| {
+                    let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                    let city = self.data.geonames.get(geonameid)?;
+                    let country = city.country.as_ref()?;
+                    if countries.contains(&country.code.as_str()) {
+                        Some((nearest, city))
+                    } else {
+                        None
+                    }
+                });
+                &mut i1
+            } else {
+                i2 = items.iter_mut().filter_map(|nearest| {
+                    let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                    let city = self.data.geonames.get(geonameid)?;
                     Some((nearest, city))
-                } else {
-                    None
-                }
-            });
-            &mut i1
-        } else {
-            i2 = items.iter_mut().filter_map(|nearest| {
-                let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
-                let city = self.data.geonames.get(geonameid)?;
-                Some((nearest, city))
-            });
-            &mut i2
-        };
+                });
+                &mut i2
+            };
 
-        if let Some(k) = k {
+        if let Some(k) = k.map(f32_le::from_native) {
             let mut points = items
                 .map(|item| {
                     (
                         item.0.distance,
-                        item.0.distance - k * item.1.population as f32,
+                        item.0.distance - k * (item.1.population.to_native() as f32),
                         item.1,
                     )
                 })
@@ -255,7 +267,7 @@ impl Engine {
             Some(
                 points
                     .iter()
-                    .map(|p| ReverseItem {
+                    .map(|p| ArchivedReverseItem {
                         distance: p.0,
                         score: p.1,
                         city: p.2,
@@ -265,7 +277,7 @@ impl Engine {
         } else {
             Some(
                 items
-                    .map(|item| ReverseItem {
+                    .map(|item| ArchivedReverseItem {
                         distance: item.0.distance,
                         score: item.0.distance,
                         city: item.1,
@@ -277,10 +289,8 @@ impl Engine {
     }
 
     /// Get country info by iso 2-letter country code.
-    pub fn country_info(&self, country_code: &str) -> Option<&CountryRecord> {
-        self.data
-            .country_info_by_code
-            .get(&country_code.to_uppercase())
+    pub fn country_info(&self, country_code: &str) -> Option<&ArchivedCountryRecord> {
+        self.data.country_info_by_code.get(country_code)
     }
 
     // TODO slim mmdb size, we are needs only geonameid
@@ -311,13 +321,13 @@ impl Engine {
     }
 
     #[cfg(feature = "geoip2")]
-    pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&CitiesRecord> {
+    pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&ArchivedCitiesRecord> {
         match self.geoip2_reader.as_ref() {
             Some((_, reader)) => {
                 let result = reader.lookup(addr).ok()?;
                 let city = result.city?;
                 let id = city.geoname_id?;
-                self.data.geonames.get(&id)
+                self.data.geonames.get(&u32_le::from_native(id))
             }
             None => {
                 #[cfg(feature = "tracing")]
@@ -348,12 +358,17 @@ impl std::fmt::Display for GeoIP2Error {
     }
 }
 
-impl From<IndexData> for Engine {
-    fn from(data: IndexData) -> Engine {
+impl<'a> From<&'a ArchivedIndexData> for Engine<'a> {
+    fn from(data: &ArchivedIndexData) -> Engine {
         let mut items = data
             .geonames
             .values()
-            .map(|record| (record.id, [record.latitude, record.longitude]))
+            .map(|record| {
+                (
+                    record.id.to_native(),
+                    [record.latitude.to_native(), record.longitude.to_native()],
+                )
+            })
             .collect::<Vec<_>>();
 
         items.sort_unstable_by_key(|item| item.0);
@@ -363,7 +378,7 @@ impl From<IndexData> for Engine {
             items
                 .iter()
                 .enumerate()
-                .map(|(index, item)| (index, item.0)),
+                .map(|(index, item)| (index, u32_le::from_native(item.0))),
         );
         let tree = ImmutableKdTree::new_from_slice(
             items

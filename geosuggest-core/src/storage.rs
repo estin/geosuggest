@@ -14,11 +14,13 @@ use std::path::Path;
 use std::time::Instant;
 
 /// rkyv storage in len-prefix format `<4-bytes metadata length><metadata><payload>`
-pub struct Storage;
+pub struct Storage {
+    buf: Vec<u8>,
+}
 
 impl Storage {
     pub fn new() -> Self {
-        Self {}
+        Self { buf: Vec::new() }
     }
 }
 
@@ -30,39 +32,44 @@ impl Default for Storage {
 
 impl Storage {
     /// Serialize engine
-    pub fn dump<W>(&self, engine: &Engine, buff: &mut W) -> Result<(), Box<dyn std::error::Error>>
+    pub fn dump<W>(
+        &self,
+        metadata: &EngineMetadata,
+        data: &IndexData,
+        buf: &mut W,
+    ) -> Result<(), Box<dyn std::error::Error>>
     where
         W: std::io::Write,
     {
-        let metadata = rkyv::to_bytes::<Error>(&engine.metadata)?;
-        buff.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        let metadata = rkyv::to_bytes::<Error>(metadata)?;
+        buf.write_all(&(metadata.len() as u32).to_be_bytes())?;
         #[cfg(feature = "tracing")]
-        tracing::info!("Write metadata {:#?}", engine.metadata);
-        buff.write_all(&metadata)?;
-        let data = rkyv::to_bytes::<Error>(&engine.data)?;
-        buff.write_all(&data)?;
+        buf.write_all(&metadata)?;
+        let data = rkyv::to_bytes::<Error>(data)?;
+        buf.write_all(&data)?;
         Ok(())
     }
 
     /// Deserialize engine
-    pub fn load<R>(&self, buff: &mut R) -> Result<Engine, Box<dyn std::error::Error>>
+    pub fn load<'a, R>(&'a mut self, buf: &mut R) -> Result<Engine<'a>, Box<dyn std::error::Error>>
     where
         R: std::io::Read + std::io::Seek,
     {
         // skip metadata
         let mut metadata_len = [0; 4];
-        buff.read_exact(&mut metadata_len)?;
+        buf.read_exact(&mut metadata_len)?;
         let metadata_len = u32::from_be_bytes(metadata_len);
-        let _ = buff.seek(SeekFrom::Current(metadata_len as i64))?;
+        let _ = buf.seek(SeekFrom::Current(metadata_len as i64))?;
 
         // Read all bytes into memory (for small data)
-        let mut bytes = Vec::new();
-        buff.read_to_end(&mut bytes)?;
+        // let mut bytes = Vec::new();
+        // buff.read_to_end(&mut bytes)?;
+        buf.read_to_end(&mut self.buf)?;
 
         // Validate and deserialize
-        let archived = rkyv::access::<ArchivedIndexData, Error>(&bytes[..])?;
+        let archived = rkyv::access::<ArchivedIndexData, Error>(&self.buf[..])?;
 
-        Ok(deserialize::<IndexData, Error>(archived)?.into())
+        Ok(archived.into())
     }
 
     /// Read engine metadata and don't load whole engine
@@ -97,7 +104,8 @@ impl Storage {
     pub fn dump_to<P: AsRef<Path>>(
         &self,
         path: P,
-        engine: &Engine,
+        metadata: &EngineMetadata,
+        data: &IndexData,
     ) -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "tracing")]
         tracing::info!("Start dump index to file...");
@@ -110,7 +118,7 @@ impl Storage {
             .truncate(true)
             .open(&path)?;
 
-        self.dump(engine, &mut file)?;
+        self.dump(metadata, data, &mut file)?;
 
         #[cfg(feature = "tracing")]
         tracing::info!("Dump index to file. took {}ms", now.elapsed().as_millis(),);
@@ -119,7 +127,7 @@ impl Storage {
     }
     /// Load whole engine from file
     pub fn load_from<P: AsRef<std::path::Path>>(
-        &self,
+        &mut self,
         path: P,
     ) -> Result<Engine, Box<dyn std::error::Error>> {
         #[cfg(feature = "tracing")]
