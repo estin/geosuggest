@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 use anyhow::Result;
+use geosuggest_core::EngineData;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
@@ -8,7 +9,7 @@ use std::time::Instant;
 
 use geosuggest_core::{
     index::{IndexData, SourceFileContentOptions},
-    Engine, EngineMetadata, EngineSourceMetadata,
+    storage, Engine, EngineMetadata, EngineSourceMetadata,
 };
 use serde::Serialize;
 
@@ -160,7 +161,7 @@ impl<'a> IndexUpdater<'a> {
         Ok((etag, content))
     }
 
-    pub async fn build(self) -> Result<Engine> {
+    pub async fn build(self) -> Result<EngineData> {
         let mut requests = vec![self.fetch(
             self.settings.cities.url,
             Some(self.settings.cities.filename),
@@ -231,8 +232,9 @@ impl<'a> IndexUpdater<'a> {
         })
         .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
-        let mut engine = Engine::from(data);
-        engine.metadata = Some(EngineMetadata {
+        let mut engine_data = EngineData::try_from(data)?;
+
+        engine_data.metadata = Some(EngineMetadata {
             source: EngineSourceMetadata {
                 cities: self.settings.cities.url.to_owned(),
                 names: self.settings.names.as_ref().map(|v| v.url.to_owned()),
@@ -251,8 +253,8 @@ impl<'a> IndexUpdater<'a> {
         });
 
         #[cfg(feature = "tracing")]
-        tracing::info!("Engine ready. took {}ms", now.elapsed().as_millis());
+        tracing::info!("Engine data ready. took {}ms", now.elapsed().as_millis());
 
-        Ok(engine)
+        Ok(engine_data)
     }
 }

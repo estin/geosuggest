@@ -136,7 +136,7 @@ struct CitiesRecordRaw {
 // http://download.geonames.org/export/dump/countryInfo.txt
 // ISO	ISO3	ISO-Numeric	fips	Country	Capital	Area(in sq km)	Population	Continent	tld	CurrencyCode	CurrencyName	Phone	Postal Code Format	Postal Code Regex	Languages	geonameid	neighbours	EquivalentFipsCode
 #[derive(Debug, Clone, serde::Deserialize, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
-#[rkyv(derive(serde::Serialize))]
+#[rkyv(derive(serde::Serialize, Debug))]
 pub struct CountryRecordRaw {
     #[rkyv(attr(serde(serialize_with = "serialize_archived_string")))]
     pub iso: String,
@@ -221,6 +221,7 @@ pub struct CountryRecordRaw {
 // }
 
 #[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
+#[rkyv(derive(Debug))]
 pub struct CountryRecord {
     /// geonames country info
     pub info: CountryRecordRaw,
@@ -858,173 +859,6 @@ impl IndexData {
         Ok(data)
     }
 }
-
-// Give me serde custom serializer implementation for struct CitiesRecord
-// use serde::ser::{Serialize, SerializeMap, SerializeStruct, Serializer};
-// use std::collections::HashMap;
-
-// pub struct CitiesRecord {
-//     pub id: u32,
-//     pub name: String,
-//     pub latitude: f32,
-//     pub longitude: f32,
-//     pub country: Option<Country>,
-//     pub admin_division: Option<AdminDivision>,
-//     pub admin2_division: Option<AdminDivision>,
-//     pub timezone: String,
-//     pub names: Option<HashMap<String, String>>,
-//     pub country_names: Option<HashMap<String, String>>,
-//     pub admin1_names: Option<HashMap<String, String>>,
-//     pub admin2_names: Option<HashMap<String, String>>,
-//     pub population: u32,
-// }
-
-// #[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
-// pub struct CountryRecord {
-//     /// geonames country info
-//     pub info: CountryRecordRaw,
-
-//     /// Country name translation
-//     pub names: Option<HashMap<String, String>>,
-
-//     /// Capital name translation
-//     pub capital_names: Option<HashMap<String, String>>,
-// }
-
-// impl Serialize for ArchivedCountryRecord {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         let mut state = serializer.serialize_struct("CountryRecord", 3)?;
-//         // state.serialize_field("info", &self.id.to_native())?;
-
-//         state.serialize_field(key, value)
-//             if let ArchivedOption::Some(data) = &self.names {
-//                 let mut names = serializer.serialize_struct("Names", data.len())?;
-//                 for (key, value) in data.iter() {
-//                     names.serialize_field(key.as_str(), value.as_str())?;
-//                 }
-//             }
-
-//         state.serialize_field(
-//             "names",
-//             &                Some(names)
-//             } else {
-//                 None
-//             },
-//         )?;
-
-//         // let mut names = serializer.serialize_map(self.data.len())?;
-//         // if let ArchivedOption::Some(data) = &self.names {
-//         //     for (key, value) in data.iter() {
-//         //         names.serialize_entry(key.as_str(), value.as_str())?;
-//         //     }
-//         // }
-//         // state.serialize_field("name", self.name.as_str())?;
-//         // state.serialize_field("latitude", &self.latitude.to_native())?;
-//         // state.serialize_field("longitude", &self.longitude.to_native())?;
-//         // // state.serialize_field("country", &self.country)?;
-//         // // state.serialize_field("admin_division", &self.admin_division)?;
-//         // // state.serialize_field("admin2_division", &self.admin2_division)?;
-//         // state.serialize_field("timezone", self.timezone.as_str())?;
-//         // // state.serialize_field("names", &self.names)?;
-//         // // state.serialize_field("country_names", &self.country_names)?;
-//         // // state.serialize_field("admin1_names", &self.admin1_names)?;
-//         // // state.serialize_field("admin2_names", &self.admin2_names)?;
-//         // state.serialize_field("population", &self.population.to_native())?;
-//         state.end()
-//     }
-// }
-
-// impl Serialize for ArchivedCitiesRecord {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         let mut state = serializer.serialize_struct("CitiesRecord", 13)?;
-//         state.serialize_field("id", &self.id.to_native())?;
-//         state.serialize_field("name", &self.name)?;
-//         state.serialize_field("latitude", &self.latitude.to_native())?;
-//         state.serialize_field("longitude", &self.longitude.to_native())?;
-//         // state.serialize_field("country", &self.country)?;
-//         // state.serialize_field("admin_division", &self.admin_division)?;
-//         // state.serialize_field("admin2_division", &self.admin2_division)?;
-//         state.serialize_field("timezone", self.timezone.as_str())?;
-//         // state.serialize_field("names", &self.names)?;
-//         // state.serialize_field("country_names", &self.country_names)?;
-//         // state.serialize_field("admin1_names", &self.admin1_names)?;
-//         // state.serialize_field("admin2_names", &self.admin2_names)?;
-//         state.serialize_field("population", &self.population.to_native())?;
-//         state.end()
-//     }
-// }
-
-// use rkyv::{
-//     access_unchecked, deserialize,
-//     rancor::Fallible,
-//     ser::{Allocator, Writer},
-//     vec::{ArchivedVec, VecResolver},
-//     with::{ArchiveWith, DeserializeWith, SerializeWith},
-//     Place,
-// };
-// use serde::ser::{Serialize, SerializeMap, SerializeStruct, Serializer};
-
-// // pub struct SU32(rkyv::primitive::ArchivedU32);
-// pub struct SU32(rkyv::rend::u32_le);
-
-// impl ArchiveWith<u32> for SU32 {
-//     // type Archived = rkyv::primitive::ArchivedU32;
-//     type Archived = rkyv::rend::u32_le;
-//     type Resolver = ();
-
-//     fn resolve_with(v: &u32, resolver: Self::Resolver, out: Place<Self::Archived>) {
-//         out.write(u32_le::from_native(*v))
-//     }
-// }
-
-// impl std::ops::Deref for SU32 {
-//     type Target = rkyv::primitive::ArchivedU32;
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// impl Serialize for SU32 {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         serializer.serialize_u32(self.to_native())
-//     }
-// }
-
-// pub struct SString(rkyv::string::ArchivedString);
-
-// impl ArchiveWith<String> for SString {
-//     type Archived = rkyv::string::ArchivedString;
-//     type Resolver = rkyv::string::StringResolver;
-
-//     fn resolve_with(v: &String, resolver: Self::Resolver, out: Place<Self::Archived>) {
-//         rkyv::string::ArchivedString::resolve_from_str(v.as_str(), resolver, out);
-//     }
-// }
-
-// impl std::ops::Deref for SString {
-//     type Target = rkyv::string::ArchivedString;
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// impl Serialize for SString {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         serializer.serialize_str(self.as_str())
-//     }
-// }
 
 use serde::ser::{SerializeMap, Serializer};
 fn serialize_archived_string<S>(
