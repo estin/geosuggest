@@ -23,11 +23,13 @@ async fn main() -> Result<()> {
         ..Default::default()
     })?;
 
-    let engine = updater.build().await?;
+    let engine_data = updater.build().await?;
+
+    let engine = engine_data.as_engine()?;
 
     println!(
         "Suggest result: {:#?}",
-        engine.suggest::<&str>("Beverley", 1, None, Some(&["us"]))
+        engine.suggest::<&str>("Beverley", 1, None, Some(&["US"]))
     );
     println!(
         "Reverse result: {:#?}",

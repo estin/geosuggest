@@ -15,7 +15,7 @@ use ntex_cors::Cors;
 use ntex_files as fs;
 use serde::{Deserialize, Serialize};
 
-use geosuggest_core::{index::CitiesRecord, storage, Engine};
+use geosuggest_core::{index::ArchivedCitiesRecord, storage, Engine};
 
 // openapi3
 use oaph::{
@@ -28,6 +28,17 @@ mod settings;
 const DEFAULT_K: f32 = 0.000000005;
 const DEFAULT_NEAREST_CITIES_LIMIT: usize = 10;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub struct StaticEngine(Engine<'static>);
+
+impl std::ops::Deref for StaticEngine {
+    type Target = Engine<'static>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub type SharedEngine = Arc<&'static mut Engine<'static>>;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCityQuery {
@@ -161,19 +172,22 @@ pub struct GeoIP2Result<'a> {
 }
 
 impl<'a> CityResultItem<'a> {
-    pub fn from_city(item: &'a CitiesRecord, lang: Option<&'a str>) -> Self {
+    pub fn from_city(item: &'a ArchivedCitiesRecord, lang: Option<&'a str>) -> Self {
         let name = match (lang, item.names.as_ref()) {
             (Some(lang), Some(names)) => names.get(lang).unwrap_or(&item.name),
             _ => &item.name,
         };
 
-        let country = if let Some(ref country) = item.country {
+        let country = if let Some(country) = item.country.as_ref() {
             let country_name = match (lang, item.country_names.as_ref()) {
-                (Some(lang), Some(names)) => names.get(lang).unwrap_or(&country.name),
+                (Some(lang), Some(names)) => names
+                    .get(lang)
+                    .map(|v| v.as_str())
+                    .unwrap_or(country.name.as_str()),
                 _ => &country.name,
             };
             Some(CountryItem {
-                id: country.id,
+                id: country.id.to_native(),
                 code: &country.code,
                 name: country_name,
             })
@@ -181,13 +195,13 @@ impl<'a> CityResultItem<'a> {
             None
         };
 
-        let admin_division = if let Some(ref admin1) = item.admin_division {
+        let admin_division = if let Some(admin1) = item.admin_division.as_ref() {
             let admin1_name = match (lang, item.admin1_names.as_ref()) {
                 (Some(lang), Some(names)) => names.get(lang).unwrap_or(&admin1.name),
                 _ => &admin1.name,
             };
             Some(AdminDivisionItem {
-                id: admin1.id,
+                id: admin1.id.to_native(),
                 code: &admin1.code,
                 name: admin1_name,
             })
@@ -195,13 +209,13 @@ impl<'a> CityResultItem<'a> {
             None
         };
 
-        let admin2_division = if let Some(ref admin2) = item.admin2_division {
+        let admin2_division = if let Some(admin2) = item.admin2_division.as_ref() {
             let admin2_name = match (lang, item.admin2_names.as_ref()) {
                 (Some(lang), Some(names)) => names.get(lang).unwrap_or(&admin2.name),
                 _ => &admin2.name,
             };
             Some(AdminDivisionItem {
-                id: admin2.id,
+                id: admin2.id.to_native(),
                 code: &admin2.code,
                 name: admin2_name,
             })
@@ -210,21 +224,21 @@ impl<'a> CityResultItem<'a> {
         };
 
         CityResultItem {
-            id: item.id,
+            id: item.id.to_native(),
             name,
             country,
             admin_division,
             admin2_division,
             timezone: &item.timezone,
-            latitude: item.latitude,
-            longitude: item.longitude,
-            population: item.population,
+            latitude: item.latitude.to_native(),
+            longitude: item.longitude.to_native(),
+            population: item.population.to_native(),
         }
     }
 }
 
 pub async fn city_get(
-    engine: web::types::State<Arc<Engine>>,
+    engine: web::types::State<SharedEngine>,
     web::types::Query(query): web::types::Query<GetCityQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -241,7 +255,7 @@ pub async fn city_get(
 }
 
 pub async fn capital(
-    engine: web::types::State<Arc<Engine>>,
+    engine: web::types::State<SharedEngine>,
     web::types::Query(query): web::types::Query<GetCapitalQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -258,7 +272,7 @@ pub async fn capital(
 }
 
 pub async fn suggest(
-    engine: web::types::State<Arc<Engine>>,
+    engine: web::types::State<SharedEngine>,
     web::types::Query(query): web::types::Query<SuggestQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -282,7 +296,7 @@ pub async fn suggest(
 }
 
 pub async fn reverse(
-    engine: web::types::State<Arc<Engine>>,
+    engine: web::types::State<SharedEngine>,
     web::types::Query(query): web::types::Query<ReverseQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -313,7 +327,7 @@ pub async fn reverse(
 
 #[cfg(feature = "geoip2")]
 pub async fn geoip2(
-    engine: web::types::State<Arc<Engine>>,
+    engine: web::types::State<SharedEngine>,
     web::types::Query(query): web::types::Query<GeoIP2Query>,
     req: HttpRequest,
 ) -> HttpResponse {
@@ -445,18 +459,26 @@ async fn main() -> std::io::Result<()> {
 
     let storage = storage::Storage::new();
 
-    let mut engine = storage
+    let mut engine_data = storage
         .load_from(&settings.index_file)
         .unwrap_or_else(|e| panic!("On build engine from file: {} - {}", settings.index_file, e));
 
     #[cfg(feature = "geoip2")]
     if let Some(geoip2_file) = settings.geoip2_file.as_ref() {
-        engine
+        engine_data
             .load_geoip2(geoip2_file)
             .unwrap_or_else(|_| panic!("On read geoip2 file from {}", geoip2_file));
     }
 
-    let shared_engine = Arc::new(engine);
+    // build static engine
+    let engine_data = Box::new(engine_data);
+    let engine_data = Box::leak(engine_data);
+    let engine = engine_data
+        .as_engine()
+        .expect("Failed to initialize engine");
+    let engine = Box::new(engine);
+    let static_engine = Box::leak(engine);
+    let shared_engine = Arc::new(static_engine);
     let shared_engine_clone = shared_engine.clone();
 
     let settings_clone = settings.clone();

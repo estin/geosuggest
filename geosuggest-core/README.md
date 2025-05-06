@@ -15,17 +15,20 @@ Usage example
 use tokio;
 use anyhow::Result;
 
-use geosuggest_core::{Engine, storage};
+use geosuggest_core::{EngineData, storage};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("Build index...");
-    let engine = load_engine().await?;
+    let engine_data = load_engine_data().await?;
+
+    println!("Initialize engine...");
+    let engine = engine_data.as_engine()?;
 
     println!(
         "Suggest result: {:#?}",
-        engine.suggest::<&str>("Beverley", 1, None, Some(&["us"]))
+        engine.suggest::<&str>("Beverley", 1, None, Some(&["US"]))
     );
     println!(
         "Reverse result: {:#?}",
@@ -35,7 +38,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn load_engine() -> Result<Engine> {
+async fn load_engine_data() -> Result<EngineData> {
     let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
 
     let updater = IndexUpdater::new(IndexUpdaterSettings {

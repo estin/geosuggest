@@ -1,8 +1,5 @@
-use crate::{
-    index::{ArchivedIndexData, IndexData},
-    ArchivedEngineMetadata,
-};
-use crate::{Engine, EngineMetadata};
+use crate::ArchivedEngineMetadata;
+use crate::EngineMetadata;
 use rkyv;
 use rkyv::{deserialize, rancor::Error};
 use std::fs::OpenOptions;
@@ -143,14 +140,4 @@ impl Storage {
 
         Ok(index)
     }
-
-    // /// Apply index
-    // pub fn apply<'a>(
-    //     &'a mut self,
-    //     data: IndexData,
-    // ) -> Result<Engine<'a>, Box<dyn std::error::Error>> {
-    //     self.buf = rkyv::to_bytes::<Error>(&data)?.to_vec();
-    //     let archived = rkyv::access::<ArchivedIndexData, Error>(&self.buf[..])?;
-    //     Ok(archived.into())
-    // }
 }

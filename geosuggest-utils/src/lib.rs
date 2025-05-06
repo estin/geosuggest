@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use geosuggest_core::{
     index::{IndexData, SourceFileContentOptions},
-    storage, Engine, EngineMetadata, EngineSourceMetadata,
+    EngineMetadata, EngineSourceMetadata,
 };
 use serde::Serialize;
 

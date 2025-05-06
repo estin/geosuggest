@@ -2,7 +2,10 @@ use anyhow::Result;
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{storage, IndexData, SourceFileOptions};
+use geosuggest_core::{
+    index::{IndexData, SourceFileOptions},
+    storage, EngineData,
+};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings, SourceItem};
 
 use clap::Parser;
@@ -147,7 +150,7 @@ async fn main() -> Result<()> {
         }
 
         Args::FromFiles(args) => {
-            let engine = Engine::new_from_files(SourceFileOptions {
+            let index_data = IndexData::new_from_files(SourceFileOptions {
                 cities: args.cities,
                 names: args.names,
                 countries: args.countries,
@@ -161,8 +164,10 @@ async fn main() -> Result<()> {
             })
             .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
+            let engine_data = EngineData::try_from(index_data)?;
+
             storage::Storage::new()
-                .dump_to(&args.output, &engine)
+                .dump_to(&args.output, &engine_data)
                 .map_err(|e| anyhow::anyhow!("Failed to dump index: {e}"))?;
         }
     };

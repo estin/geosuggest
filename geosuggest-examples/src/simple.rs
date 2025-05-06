@@ -1,7 +1,7 @@
 use anyhow::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{storage, Engine, EngineData};
+use geosuggest_core::{storage, EngineData};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
@@ -15,14 +15,14 @@ async fn main() -> Result<()> {
     subscriber.init();
 
     // build/load/update index
-    let engine_data = load_engine().await?;
+    let engine_data = load_engine_data().await?;
     tracing::info!("Index metadata: {:#?}", engine_data.metadata);
 
     // use
-    let engine = engine_data.get_ref()?;
+    let engine = engine_data.as_engine()?;
     tracing::info!(
         "Suggest result: {:#?}",
-        engine.suggest::<&str>("Beverley", 1, None, Some(&["us"]))
+        engine.suggest::<&str>("Beverley", 1, None, Some(&["US"]))
     );
     tracing::info!(
         "Reverse result: {:#?}",
@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn load_engine<'a>() -> Result<EngineData> {
+async fn load_engine_data<'a>() -> Result<EngineData> {
     let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
 
     let storage = storage::Storage::new();
