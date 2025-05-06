@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn load_engine_data<'a>() -> Result<EngineData> {
+async fn load_engine_data() -> Result<EngineData> {
     let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
 
     let storage = storage::Storage::new();

@@ -9,7 +9,6 @@ use kiddo::immutable::float::kdtree::ImmutableKdTree;
 
 use rayon::prelude::*;
 use rkyv::rend::{f32_le, u32_le};
-use rkyv::string::ArchivedString;
 use strsim::jaro_winkler;
 
 #[cfg(feature = "geoip2")]
@@ -25,8 +24,7 @@ pub mod index;
 pub mod storage;
 
 use index::{
-    ArchivedCitiesRecord, ArchivedCountryRecord, ArchivedEntry, ArchivedIndexData, CitiesRecord,
-    CountryRecord, Entry, IndexData,
+    ArchivedCitiesRecord, ArchivedCountryRecord, ArchivedEntry, ArchivedIndexData, IndexData,
 };
 
 #[cfg_attr(feature = "oaph", derive(JsonSchema))]
@@ -127,7 +125,7 @@ pub struct Engine<'a> {
     geoip2: Option<Reader<'a, City<'a>>>,
 }
 
-impl<'a> Engine<'a> {
+impl Engine<'_> {
     pub fn get(&self, id: &u32) -> Option<&ArchivedCitiesRecord> {
         self.data.geonames.get(&u32_le::from_native(*id))
     }
