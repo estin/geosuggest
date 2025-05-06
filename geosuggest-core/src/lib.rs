@@ -42,7 +42,9 @@ pub struct ArchivedReverseItem<'a> {
     pub score: f32,
 }
 
-#[derive(Debug, Default, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
+#[derive(
+    Debug, Default, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive, serde::Serialize,
+)]
 pub struct EngineSourceMetadata {
     pub cities: String,
     pub names: Option<String>,
@@ -53,7 +55,7 @@ pub struct EngineSourceMetadata {
     pub etag: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
+#[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive, serde::Serialize)]
 pub struct EngineMetadata {
     /// Index was built on version
     pub geosuggest_version: String,

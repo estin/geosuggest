@@ -175,59 +175,19 @@ pub struct CountryRecordRaw {
     #[rkyv(attr(serde(serialize_with = "serialize_archived_string")))]
     pub equivalent_fips_code: String,
 }
-// #[derive(Debug, Clone, serde::Deserialize, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
-// #[rkyv(derive(serde::Serialize))]
-// pub struct CountryRecordRaw {
-//     #[rkyv(with=SString)]
-//     pub iso: String,
-//     #[rkyv(with=SString)]
-//     pub iso3: String,
-//     #[rkyv(with=SString)]
-//     pub iso_numeric: String,
-//     #[rkyv(with=SString)]
-//     pub fips: String,
-//     #[rkyv(with=SString)]
-//     pub name: String,
-//     #[rkyv(with=SString)]
-//     pub capital: String,
-//     #[rkyv(with=SString)]
-//     pub area: String,
-//     #[rkyv(with=SU32)]
-//     pub population: u32,
-//     #[rkyv(with=SString)]
-//     pub continent: String,
-//     #[rkyv(with=SString)]
-//     pub tld: String,
-//     #[rkyv(with=SString)]
-//     pub currency_code: String,
-//     #[rkyv(with=SString)]
-//     pub currency_name: String,
-//     #[rkyv(with=SString)]
-//     pub phone: String,
-//     #[rkyv(with=SString)]
-//     pub postal_code_format: String,
-//     #[rkyv(with=SString)]
-//     pub postal_code_regex: String,
-//     #[rkyv(with=SString)]
-//     pub languages: String,
-//     #[rkyv(with=SU32)]
-//     pub geonameid: u32,
-//     #[rkyv(with=SString)]
-//     pub neighbours: String,
-//     #[rkyv(with=SString)]
-//     pub equivalent_fips_code: String,
-// }
 
 #[derive(Debug, Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
-#[rkyv(derive(Debug))]
+#[rkyv(derive(Debug, serde::Serialize))]
 pub struct CountryRecord {
     /// geonames country info
     pub info: CountryRecordRaw,
 
     /// Country name translation
+    #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]
     pub names: Option<HashMap<String, String>>,
 
     /// Capital name translation
+    #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]
     pub capital_names: Option<HashMap<String, String>>,
 }
 
