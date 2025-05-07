@@ -8,7 +8,6 @@ use kiddo::{self, SquaredEuclidean};
 use kiddo::immutable::float::kdtree::ImmutableKdTree;
 
 use rayon::prelude::*;
-use rkyv::rancor::Source;
 use rkyv::rend::{f32_le, u32_le};
 use strsim::jaro_winkler;
 
@@ -100,16 +99,15 @@ impl EngineData {
         Ok(())
     }
 
-    pub fn as_engine(&self) -> Result<Engine, rkyv::rancor::Error> {
+    pub fn as_engine(&self) -> Result<Engine, Box<dyn std::error::Error>> {
         Ok(Engine {
-            data: rkyv::access(&self.data)?,
+            data: rkyv::access::<_, rkyv::rancor::Error>(&self.data)?,
             tree_index_to_geonameid: &self.tree_index_to_geonameid,
             tree: &self.tree,
             #[cfg(feature = "geoip2")]
             geoip2: if let Some(geoip2) = &self.geoip2 {
                 Reader::<City>::from_bytes(geoip2)
-                    .map_err(GeoIP2Error)
-                    .map_err(rkyv::rancor::Error::new)?
+                    .map_err(|e| format!("Geoip2 error: {e:?}"))?
                     .into()
             } else {
                 None
@@ -344,26 +342,6 @@ impl Engine<'_> {
                 None
             }
         }
-    }
-}
-
-#[cfg(feature = "geoip2")]
-struct GeoIP2Error(geoip2::Error);
-
-#[cfg(feature = "geoip2")]
-impl std::error::Error for GeoIP2Error {}
-
-#[cfg(feature = "geoip2")]
-impl std::fmt::Debug for GeoIP2Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.0)
-    }
-}
-
-#[cfg(feature = "geoip2")]
-impl std::fmt::Display for GeoIP2Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GeoIP2 Error {:?}", self.0)
     }
 }
 

@@ -12,7 +12,6 @@ path = "src/simple.rs"
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-anyhow = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 
 geosuggest-core = { path = "../geosuggest-core", version = "0.6", features=[ "tracing" ] }

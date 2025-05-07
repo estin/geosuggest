@@ -1,11 +1,10 @@
-use anyhow::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use geosuggest_core::{storage, EngineData};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // logging
     let subscriber = tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
@@ -34,7 +33,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn load_engine_data() -> Result<EngineData> {
+async fn load_engine_data() -> Result<EngineData, Box<dyn std::error::Error>> {
     let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
 
     let storage = storage::Storage::new();
@@ -48,7 +47,7 @@ async fn load_engine_data() -> Result<EngineData> {
         // load existed index
         let metadata = storage
             .read_metadata(index_file)
-            .map_err(|e| anyhow::anyhow!("On load index metadata from {index_file:?}: {e}"))?;
+            .map_err(|e| format!("On load index metadata from {index_file:?}: {e}"))?;
 
         // check updates
         let mut engine = match &metadata {
@@ -56,12 +55,12 @@ async fn load_engine_data() -> Result<EngineData> {
                 let engine_data = updater.build().await?;
                 storage
                     .dump_to(index_file, &engine_data)
-                    .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
+                    .map_err(|e| format!("Failed dump to {index_file:?}: {e}"))?;
                 engine_data
             }
             _ => storage
                 .load_from(index_file)
-                .map_err(|e| anyhow::anyhow!("On load index from {index_file:?}: {e}"))?,
+                .map_err(|e| format!("On load index from {index_file:?}: {e}"))?,
         };
 
         // attach metadata
@@ -72,7 +71,7 @@ async fn load_engine_data() -> Result<EngineData> {
         let engine_data = updater.build().await?;
         storage
             .dump_to(index_file, &engine_data)
-            .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
+            .map_err(|e| format!("Failed dump to {index_file:?}: {e}"))?;
         engine_data
     })
 }
