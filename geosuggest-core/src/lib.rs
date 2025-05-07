@@ -109,7 +109,7 @@ impl EngineData {
             geoip2: if let Some(geoip2) = &self.geoip2 {
                 Reader::<City>::from_bytes(geoip2)
                     .map_err(GeoIP2Error)
-                    .map_err(|e| rkyv::rancor::Error::new(e))?
+                    .map_err(rkyv::rancor::Error::new)?
                     .into()
             } else {
                 None
