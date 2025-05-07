@@ -13,13 +13,12 @@
 Usage example
 ```rust
 use tokio;
-use anyhow::Result;
 
 use geosuggest_core::{EngineData, storage};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Build index...");
     let engine_data = load_engine_data().await?;
 
@@ -38,7 +37,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn load_engine_data() -> Result<EngineData> {
+async fn load_engine_data() -> Result<EngineData, Box<dyn std::error::Error>> {
     let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
 
     let updater = IndexUpdater::new(IndexUpdaterSettings {
@@ -52,26 +51,26 @@ async fn load_engine_data() -> Result<EngineData> {
         // load existed index
         let metadata = storage
             .read_metadata(index_file)
-            .map_err(|e| anyhow::anyhow!("On load index metadata from {index_file:?}: {e}"))?;
+            .map_err(|e| format!("On load index metadata from {index_file:?}: {e}"))?;
 
         match metadata {
             Some(m) if updater.has_updates(&m).await? => {
                 let engine = updater.build().await?;
                 storage
                     .dump_to(index_file, &engine)
-                    .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
+                    .map_err(|e| format!("Failed dump to {index_file:?}: {e}"))?;
                 engine
             }
             _ => storage
                 .load_from(index_file)
-                .map_err(|e| anyhow::anyhow!("On load index from {index_file:?}: {e}"))?,
+                .map_err(|e| format!("On load index from {index_file:?}: {e}"))?,
         }
     } else {
         // initial
         let engine = updater.build().await?;
         storage
             .dump_to(index_file, &engine)
-            .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
+            .map_err(|e| format!("Failed dump to {index_file:?}: {e}"))?;
         engine
     })
 

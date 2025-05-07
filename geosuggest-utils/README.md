@@ -11,12 +11,10 @@
 Usage example
 ```rust
 use tokio;
-use anyhow::Result;
-
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Build index...");
     let updater = IndexUpdater::new(IndexUpdaterSettings {
         names: None, // no multilang support
