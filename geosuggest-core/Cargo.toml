@@ -25,6 +25,7 @@ rayon.workspace = true
 strsim.workspace = true
 kiddo.workspace = true
 rkyv.workspace = true
+rkyv07.workspace = true
 itertools.workspace = true
 
 geoip2 = { workspace = true, optional = true}

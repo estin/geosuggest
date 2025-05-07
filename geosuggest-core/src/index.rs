@@ -6,6 +6,7 @@ use std::error::Error;
 #[cfg(feature = "oaph")]
 use oaph::schemars::{self, JsonSchema};
 
+use kiddo::immutable::float::kdtree::ImmutableKdTree;
 use rkyv::collections::swiss_table::ArchivedHashMap;
 use rkyv::option::ArchivedOption;
 use rkyv::rend::{f32_le, u32_le};
@@ -52,6 +53,8 @@ pub struct IndexData {
     pub geonames: HashMap<u32, CitiesRecord>,
     pub capitals: HashMap<String, u32>,
     pub country_info_by_code: HashMap<String, CountryRecord>,
+    pub tree: Vec<u8>,
+    pub tree_index_to_geonameid: HashMap<usize, u32>,
 }
 
 #[derive(Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
@@ -782,6 +785,20 @@ impl IndexData {
         geonames.sort_unstable_by_key(|item| item.id);
         geonames.dedup_by_key(|item| item.id);
 
+        let tree_index_to_geonameid = HashMap::from_iter(
+            geonames
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index, item.id)),
+        );
+        let tree = ImmutableKdTree::new_from_slice(
+            geonames
+                .iter()
+                .map(|item| [item.latitude, item.longitude])
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
         let data = IndexData {
             geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
             entries,
@@ -810,6 +827,8 @@ impl IndexData {
                 HashMap::new()
             },
             capitals,
+            tree: kdtree_utils::to_bytes(tree),
+            tree_index_to_geonameid,
         };
 
         #[cfg(feature = "tracing")]
@@ -872,5 +891,26 @@ where
         map.end()
     } else {
         s.serialize_none()
+    }
+}
+
+pub mod kdtree_utils {
+    use kiddo::immutable::float::kdtree::{
+        AlignedArchivedImmutableKdTree, ImmutableKdTree, ImmutableKdTreeRK,
+    };
+    use rkyv07::{self};
+
+    pub type Tree = ImmutableKdTree<f32, u32, 2, 32>;
+    pub type TreeRK = ImmutableKdTreeRK<f32, u32, 2, 32>;
+    pub type AlignedTree<'a> = AlignedArchivedImmutableKdTree<'a, f32, u32, 2, 32>;
+
+    pub fn to_bytes(tree: Tree) -> Vec<u8> {
+        rkyv07::to_bytes::<_, 1024>(&TreeRK::from(tree))
+            .unwrap()
+            .to_vec()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> AlignedTree {
+        AlignedArchivedImmutableKdTree::from_bytes(&bytes[..])
     }
 }
