@@ -8,6 +8,7 @@ use kiddo::{self, SquaredEuclidean};
 use kiddo::immutable::float::kdtree::ImmutableKdTree;
 
 use rayon::prelude::*;
+use rkyv::rancor::Source;
 use rkyv::rend::{f32_le, u32_le};
 use strsim::jaro_winkler;
 
@@ -95,9 +96,7 @@ impl EngineData {
         &mut self,
         path: P,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // consume and release memory of previously leaked buffer and reader
         self.geoip2 = std::fs::read(path)?.into();
-
         Ok(())
     }
 
@@ -110,7 +109,7 @@ impl EngineData {
             geoip2: if let Some(geoip2) = &self.geoip2 {
                 Reader::<City>::from_bytes(geoip2)
                     .map_err(GeoIP2Error)
-                    .unwrap()
+                    .map_err(|e| rkyv::rancor::Error::new(e))?
                     .into()
             } else {
                 None

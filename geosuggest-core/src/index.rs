@@ -6,6 +6,12 @@ use std::error::Error;
 #[cfg(feature = "oaph")]
 use oaph::schemars::{self, JsonSchema};
 
+use rkyv::collections::swiss_table::ArchivedHashMap;
+use rkyv::option::ArchivedOption;
+use rkyv::rend::{f32_le, u32_le};
+use rkyv::string::ArchivedString;
+use serde::ser::{SerializeMap, Serializer};
+
 #[cfg(feature = "tracing")]
 use std::time::Instant;
 
@@ -818,40 +824,33 @@ impl IndexData {
     }
 }
 
-use serde::ser::{SerializeMap, Serializer};
-fn serialize_archived_string<S>(
-    value: &rkyv::string::ArchivedString,
-    s: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_archived_string<S>(value: &ArchivedString, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     s.serialize_str(value.as_str())
 }
 
-fn serialize_archived_u32<S>(value: &rkyv::rend::u32_le, s: S) -> Result<S::Ok, S::Error>
+fn serialize_archived_u32<S>(value: &u32_le, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     s.serialize_u32(value.to_native())
 }
 
-fn serialize_archived_f32<S>(value: &rkyv::rend::f32_le, s: S) -> Result<S::Ok, S::Error>
+fn serialize_archived_f32<S>(value: &f32_le, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     s.serialize_f32(value.to_native())
 }
 
-fn serialize_archived_option<S, T>(
-    value: &rkyv::option::ArchivedOption<T>,
-    s: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_archived_option<S, T>(value: &ArchivedOption<T>, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
     T: serde::Serialize,
 {
-    if let rkyv::option::ArchivedOption::Some(v) = value {
+    if let Some(v) = value.as_ref() {
         s.serialize_some(v)
     } else {
         s.serialize_none()
@@ -859,18 +858,13 @@ where
 }
 
 fn serialize_archived_optional_map<S>(
-    value: &rkyv::option::ArchivedOption<
-        rkyv::collections::swiss_table::ArchivedHashMap<
-            rkyv::string::ArchivedString,
-            rkyv::string::ArchivedString,
-        >,
-    >,
+    value: &ArchivedOption<ArchivedHashMap<ArchivedString, ArchivedString>>,
     s: S,
 ) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    if let rkyv::option::ArchivedOption::Some(v) = value {
+    if let Some(v) = value.as_ref() {
         let mut map = s.serialize_map(v.len().into())?;
         for (key, value) in v.iter() {
             map.serialize_entry(key.as_str(), value.as_str())?;

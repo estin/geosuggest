@@ -1,7 +1,7 @@
 use crate::ArchivedEngineMetadata;
 use crate::EngineMetadata;
 use rkyv;
-use rkyv::{deserialize, rancor::Error};
+use rkyv::{deserialize, option::ArchivedOption, rancor::Error};
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::io::SeekFrom;
@@ -59,7 +59,7 @@ impl Storage {
         let mut bytes = rkyv::util::AlignedVec::new();
         bytes.extend_from_reader(buf)?;
 
-        Ok(bytes.try_into().unwrap())
+        Ok(bytes.try_into()?)
     }
 
     /// Read engine metadata and don't load whole engine
@@ -83,9 +83,8 @@ impl Storage {
         let mut raw_metadata = vec![0; metadata_len as usize];
         file.read_exact(&mut raw_metadata)?;
 
-        let archived = rkyv::access::<rkyv::option::ArchivedOption<ArchivedEngineMetadata>, Error>(
-            &raw_metadata[..],
-        )?;
+        let archived =
+            rkyv::access::<ArchivedOption<ArchivedEngineMetadata>, Error>(&raw_metadata[..])?;
 
         Ok(deserialize::<Option<EngineMetadata>, Error>(archived)?)
     }
