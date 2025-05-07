@@ -1,9 +1,16 @@
 #![doc = include_str!("../README.md")]
 use anyhow::Result;
+use geosuggest_core::EngineData;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
-use geosuggest_core::{Engine, EngineMetadata, EngineSourceMetadata, SourceFileContentOptions};
+#[cfg(feature = "tracing")]
+use std::time::Instant;
+
+use geosuggest_core::{
+    index::{IndexData, SourceFileContentOptions},
+    EngineMetadata, EngineSourceMetadata,
+};
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -154,7 +161,7 @@ impl<'a> IndexUpdater<'a> {
         Ok((etag, content))
     }
 
-    pub async fn build(self) -> Result<Engine> {
+    pub async fn build(self) -> Result<EngineData> {
         let mut requests = vec![self.fetch(
             self.settings.cities.url,
             Some(self.settings.cities.filename),
@@ -190,7 +197,10 @@ impl<'a> IndexUpdater<'a> {
         #[cfg(feature = "tracing")]
         tracing::info!("Try to build index...");
 
-        let mut engine = Engine::new_from_files_content(SourceFileContentOptions {
+        #[cfg(feature = "tracing")]
+        let now = Instant::now();
+
+        let data = IndexData::new_from_files_content(SourceFileContentOptions {
             cities: String::from_utf8(
                 results
                     .remove(&"cities")
@@ -222,7 +232,9 @@ impl<'a> IndexUpdater<'a> {
         })
         .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 
-        engine.metadata = Some(EngineMetadata {
+        let mut engine_data = EngineData::try_from(data)?;
+
+        engine_data.metadata = Some(EngineMetadata {
             source: EngineSourceMetadata {
                 cities: self.settings.cities.url.to_owned(),
                 names: self.settings.names.as_ref().map(|v| v.url.to_owned()),
@@ -240,6 +252,9 @@ impl<'a> IndexUpdater<'a> {
             ..Default::default()
         });
 
-        Ok(engine)
+        #[cfg(feature = "tracing")]
+        tracing::info!("Engine data ready. took {}ms", now.elapsed().as_millis());
+
+        Ok(engine_data)
     }
 }

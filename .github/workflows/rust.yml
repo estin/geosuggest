@@ -14,6 +14,6 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      - run: cargo clippy --workspace --no-default-features --features="tokio,geoip2_support,tracing"
-      - run: cargo test --workspace --no-default-features --features="tokio,geoip2_support,tracing"
+      - run: cargo clippy --workspace --no-default-features --features="tokio,geoip2,tracing"
+      - run: cargo test --workspace --no-default-features --features="tokio,geoip2,tracing"
       - run: cargo run -p geosuggest-examples --release --bin simple

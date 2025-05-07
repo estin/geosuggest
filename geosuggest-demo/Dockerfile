@@ -2,7 +2,7 @@ FROM rust:1.84-slim-bullseye
 
 ARG GEOSUGGEST_BASE_API_URL=$GEOSUGGEST_BASE_API_URL
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
-ARG GEOSUGGEST_INDEX=geosuggest-index.bincode
+ARG GEOSUGGEST_INDEX=geosuggest-index.rkyv
 ARG CITIES=cities5000
 
 RUN apt-get update \
@@ -55,7 +55,7 @@ RUN cd /root/geosuggest-release/geosuggest-demo \
 FROM debian:bookworm-slim
 
 ARG PORT=$PORT
-ARG GEOSUGGEST_INDEX=geosuggest-index.bincode
+ARG GEOSUGGEST_INDEX=geosuggest-index.rkyv
 
 COPY --from=0 /root/geosuggest-release/target/release/geosuggest /usr/bin
 COPY --from=0 /root/geosuggest-demo-release /opt/geosuggest-static

@@ -1,29 +1,99 @@
-use crate::{Engine, EngineMetadata};
+use crate::ArchivedEngineMetadata;
+use crate::EngineMetadata;
+use rkyv;
+use rkyv::{deserialize, option::ArchivedOption, rancor::Error};
 use std::fs::OpenOptions;
+use std::io::Read;
+use std::io::SeekFrom;
 use std::path::Path;
 
 #[cfg(feature = "tracing")]
 use std::time::Instant;
 
-pub trait IndexStorage {
-    /// Serialize engine
-    fn dump<W>(&self, engine: &Engine, buff: &mut W) -> Result<(), Box<dyn std::error::Error>>
+/// rkyv storage in len-prefix format `<4-bytes metadata length><metadata><payload>`
+pub struct Storage {}
+
+impl Storage {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Default for Storage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Storage {
+    /// Serialize
+    pub fn dump<W>(
+        &self,
+        buf: &mut W,
+        engine_data: &crate::EngineData,
+    ) -> Result<(), Box<dyn std::error::Error>>
     where
-        W: std::io::Write;
-    /// Deserialize engine
-    fn load<R>(&self, buff: &mut R) -> Result<Engine, Box<dyn std::error::Error>>
+        W: std::io::Write,
+    {
+        let metadata = rkyv::to_bytes::<Error>(&engine_data.metadata)?;
+
+        buf.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        #[cfg(feature = "tracing")]
+        buf.write_all(&metadata)?;
+
+        buf.write_all(&engine_data.data)?;
+        Ok(())
+    }
+
+    /// Deserialize
+    pub fn load<R>(&self, buf: &mut R) -> Result<crate::EngineData, Box<dyn std::error::Error>>
     where
-        R: std::io::Read;
-    /// Read engine metadata (don't load whole engine)
-    fn read_metadata<P: AsRef<Path>>(
+        R: std::io::Read + std::io::Seek,
+    {
+        // skip metadata
+        let mut metadata_len = [0; 4];
+        buf.read_exact(&mut metadata_len)?;
+        let metadata_len = u32::from_be_bytes(metadata_len);
+        let _ = buf.seek(SeekFrom::Current(metadata_len as i64))?;
+
+        let mut bytes = rkyv::util::AlignedVec::new();
+        bytes.extend_from_reader(buf)?;
+
+        Ok(bytes.try_into()?)
+    }
+
+    /// Read engine metadata and don't load whole engine
+    pub fn read_metadata<P: AsRef<Path>>(
         &self,
         path: P,
-    ) -> Result<Option<EngineMetadata>, Box<dyn std::error::Error>>;
-    /// Dump whole engine to file
-    fn dump_to<P: AsRef<Path>>(
+    ) -> Result<Option<EngineMetadata>, Box<dyn std::error::Error>> {
+        let mut file = OpenOptions::new()
+            .create(false)
+            .read(true)
+            .truncate(false)
+            .open(&path)?;
+
+        let mut metadata_len = [0; 4];
+        file.read_exact(&mut metadata_len)?;
+
+        let metadata_len = u32::from_be_bytes(metadata_len);
+        if metadata_len == 0 {
+            return Ok(None);
+        }
+        let mut raw_metadata = vec![0; metadata_len as usize];
+        file.read_exact(&mut raw_metadata)?;
+
+        let archived =
+            rkyv::access::<ArchivedOption<ArchivedEngineMetadata>, Error>(&raw_metadata[..])?;
+
+        Ok(deserialize::<Option<EngineMetadata>, Error>(archived)?)
+    }
+
+    /// Dump whole index to file
+    pub fn dump_to<P: AsRef<Path>>(
         &self,
         path: P,
-        engine: &Engine,
+        engine_data: &crate::EngineData,
     ) -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "tracing")]
         tracing::info!("Start dump index to file...");
@@ -36,18 +106,18 @@ pub trait IndexStorage {
             .truncate(true)
             .open(&path)?;
 
-        self.dump(engine, &mut file)?;
+        self.dump(&mut file, engine_data)?;
 
         #[cfg(feature = "tracing")]
         tracing::info!("Dump index to file. took {}ms", now.elapsed().as_millis(),);
 
         Ok(())
     }
-    /// Load whole engine from file
-    fn load_from<P: AsRef<std::path::Path>>(
+    /// Load whole index from file
+    pub fn load_from<P: AsRef<std::path::Path>>(
         &self,
         path: P,
-    ) -> Result<Engine, Box<dyn std::error::Error>> {
+    ) -> Result<crate::EngineData, Box<dyn std::error::Error>> {
         #[cfg(feature = "tracing")]
         tracing::info!("Loading index...");
         #[cfg(feature = "tracing")]
@@ -68,155 +138,5 @@ pub trait IndexStorage {
         );
 
         Ok(index)
-    }
-}
-
-pub mod json {
-    use super::IndexStorage;
-    use crate::{Engine, EngineDump, EngineMetadata};
-    use std::fs::OpenOptions;
-    use std::io::BufRead;
-    use std::path::Path;
-
-    /// JSON storage in 2-lines format `<metadata>\n<payload>`
-    pub struct Storage;
-
-    impl Storage {
-        pub fn new() -> Self {
-            Self {}
-        }
-    }
-
-    impl Default for Storage {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl IndexStorage for Storage {
-        /// Serialize engine
-        fn dump<W>(&self, engine: &Engine, buff: &mut W) -> Result<(), Box<dyn std::error::Error>>
-        where
-            W: std::io::Write,
-        {
-            serde_json::to_writer(buff.by_ref(), &engine.metadata)?;
-            writeln!(buff.by_ref())?;
-            serde_json::to_writer(buff, &engine)?;
-            Ok(())
-        }
-        /// Deserialize engine
-        fn load<R>(&self, buff: &mut R) -> Result<Engine, Box<dyn std::error::Error>>
-        where
-            R: std::io::Read,
-        {
-            let Some(raw_payload) = std::io::BufReader::new(buff).lines().nth(1) else {
-                return Err(std::io::Error::from(std::io::ErrorKind::InvalidData).into());
-            };
-
-            Ok(serde_json::from_str::<EngineDump>(&raw_payload?)?.into())
-        }
-        /// Read engine metadata and don't load whole engine
-        fn read_metadata<P: AsRef<Path>>(
-            &self,
-            path: P,
-        ) -> Result<Option<EngineMetadata>, Box<dyn std::error::Error>> {
-            let file = OpenOptions::new()
-                .create(false)
-                .read(true)
-                .truncate(false)
-                .open(&path)?;
-
-            let Some(raw_metadata) = std::io::BufReader::new(file).lines().next() else {
-                return Ok(None);
-            };
-
-            Ok(Some(serde_json::from_str(&raw_metadata?)?))
-        }
-    }
-}
-
-pub mod bincode {
-    use super::IndexStorage;
-    use crate::{Engine, EngineDump, EngineMetadata};
-    use std::fs::OpenOptions;
-    use std::io::Read;
-    use std::path::Path;
-
-    /// Bincode storage in len-prefix format `<4-bytes metadata length><metadata><payload>`
-    pub struct Storage;
-
-    impl Storage {
-        pub fn new() -> Self {
-            Self {}
-        }
-    }
-
-    impl Default for Storage {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl IndexStorage for Storage {
-        /// Serialize engine
-        fn dump<W>(&self, engine: &Engine, buff: &mut W) -> Result<(), Box<dyn std::error::Error>>
-        where
-            W: std::io::Write,
-        {
-            let config = bincode::config::standard();
-            let metadata = bincode::serde::encode_to_vec(&engine.metadata, config)?;
-            buff.write_all(&(metadata.len() as u32).to_be_bytes())?;
-            buff.write_all(&metadata)?;
-            bincode::serde::encode_into_std_write(engine, buff, config)?;
-            Ok(())
-        }
-
-        /// Deserialize engine
-        fn load<R>(&self, buff: &mut R) -> Result<Engine, Box<dyn std::error::Error>>
-        where
-            R: std::io::Read,
-        {
-            // skip metadata
-            let mut metadata_len = [0; 4];
-            buff.read_exact(&mut metadata_len)?;
-            let metadata_len = u32::from_be_bytes(metadata_len);
-            // TODO use Seek?
-            // std::io::copy(buff.take(metadata_len.into()), &mut std::io::sink());
-            let mut skip = vec![0; metadata_len as usize];
-            buff.read_exact(&mut skip)?;
-
-            // load payload
-            Ok(bincode::serde::decode_from_std_read::<EngineDump, _, _>(
-                buff,
-                bincode::config::standard(),
-            )?
-            .into())
-        }
-
-        /// Read engine metadata and don't load whole engine
-        fn read_metadata<P: AsRef<Path>>(
-            &self,
-            path: P,
-        ) -> Result<Option<EngineMetadata>, Box<dyn std::error::Error>> {
-            let mut file = OpenOptions::new()
-                .create(false)
-                .read(true)
-                .truncate(false)
-                .open(&path)?;
-
-            let mut metadata_len = [0; 4];
-            file.read_exact(&mut metadata_len)?;
-
-            let metadata_len = u32::from_be_bytes(metadata_len);
-            let mut raw_metadata = vec![0; metadata_len as usize];
-            file.read_exact(&mut raw_metadata)?;
-
-            let (metadata, _) = bincode::serde::borrow_decode_from_slice(
-                &raw_metadata,
-                bincode::config::standard(),
-            )?;
-
-            Ok(metadata)
-        }
     }
 }

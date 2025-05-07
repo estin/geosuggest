@@ -1,10 +1,7 @@
 use anyhow::Result;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use geosuggest_core::{
-    storage::{self, IndexStorage},
-    Engine,
-};
+use geosuggest_core::{storage, EngineData};
 use geosuggest_utils::{IndexUpdater, IndexUpdaterSettings};
 
 #[tokio::main]
@@ -18,13 +15,14 @@ async fn main() -> Result<()> {
     subscriber.init();
 
     // build/load/update index
-    let engine = load_engine().await?;
-    tracing::info!("Index metadata: {:#?}", engine.metadata);
+    let engine_data = load_engine_data().await?;
+    tracing::info!("Index metadata: {:#?}", engine_data.metadata);
 
     // use
+    let engine = engine_data.as_engine()?;
     tracing::info!(
         "Suggest result: {:#?}",
-        engine.suggest::<&str>("Beverley", 1, None, Some(&["us"]))
+        engine.suggest::<&str>("Beverley", 1, None, Some(&["US"]))
     );
     tracing::info!(
         "Reverse result: {:#?}",
@@ -36,15 +34,15 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn load_engine() -> Result<Engine> {
-    let index_file = std::path::Path::new("/tmp/geosuggest-index.bincode");
+async fn load_engine_data() -> Result<EngineData> {
+    let index_file = std::path::Path::new("/tmp/geosuggest-index.rkyv");
+
+    let storage = storage::Storage::new();
 
     let updater = IndexUpdater::new(IndexUpdaterSettings {
         filter_languages: vec!["ru", "ar"],
         ..Default::default()
     })?;
-
-    let storage = storage::bincode::Storage::new();
 
     Ok(if index_file.exists() {
         // load existed index
@@ -52,24 +50,29 @@ async fn load_engine() -> Result<Engine> {
             .read_metadata(index_file)
             .map_err(|e| anyhow::anyhow!("On load index metadata from {index_file:?}: {e}"))?;
 
-        match metadata {
-            Some(m) if updater.has_updates(&m).await? => {
-                let engine = updater.build().await?;
+        // check updates
+        let mut engine = match &metadata {
+            Some(m) if updater.has_updates(m).await? => {
+                let engine_data = updater.build().await?;
                 storage
-                    .dump_to(index_file, &engine)
+                    .dump_to(index_file, &engine_data)
                     .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
-                engine
+                engine_data
             }
             _ => storage
                 .load_from(index_file)
                 .map_err(|e| anyhow::anyhow!("On load index from {index_file:?}: {e}"))?,
-        }
+        };
+
+        // attach metadata
+        engine.metadata = metadata;
+        engine
     } else {
         // initial
-        let engine = updater.build().await?;
+        let engine_data = updater.build().await?;
         storage
-            .dump_to(index_file, &engine)
+            .dump_to(index_file, &engine_data)
             .map_err(|e| anyhow::anyhow!("Failed dump to {index_file:?}: {e}"))?;
-        engine
+        engine_data
     })
 }

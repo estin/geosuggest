@@ -35,5 +35,6 @@ serde.workspace = true
 tokio.workspace = true
 futures.workspace = true
 clap = { workspace = true, optional = true }
+rkyv.workspace = true
 
 geosuggest-core = { path = "../geosuggest-core", version = "0.6" }
