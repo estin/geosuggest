@@ -20,6 +20,7 @@ Main features:
  - [strsim](https://crates.io/crates/strsim)
  - [kiddo](https://crates.io/crates/kiddo)
  - [geoip2](https://crates.io/crates/geoip2)
+ - [rkyv](https://crates.io/crates/rkyv)
  - [ntex](https://crates.io/crates/ntex)
 
 
