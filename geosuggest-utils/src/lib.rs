@@ -150,10 +150,12 @@ impl<'a> IndexUpdater<'a> {
             tracing::info!("Unzip {filename}");
             let cursor = Cursor::new(content);
             let mut archive = zip::read::ZipArchive::new(cursor)?;
-            let file = archive
+            let mut file = archive
                 .by_name(filename)
                 .map_err(|e| anyhow::anyhow!("On get file {filename} from archive: {e}"))?;
-            file.bytes().collect::<std::io::Result<Vec<_>>>()?
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+            buf
         } else {
             content
         };
