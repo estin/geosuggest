@@ -5,8 +5,6 @@ use itertools::Itertools;
 
 use kiddo::{self, SquaredEuclidean};
 
-use kiddo::immutable::float::kdtree::ImmutableKdTree;
-
 use rayon::prelude::*;
 use rkyv::rend::{f32_le, u32_le};
 use strsim::jaro_winkler;
@@ -82,11 +80,8 @@ impl Default for EngineMetadata {
 pub struct EngineData {
     pub data: rkyv::util::AlignedVec,
     pub metadata: Option<EngineMetadata>,
-
     #[cfg(feature = "geoip2")]
     pub geoip2: Option<Vec<u8>>,
-    tree_index_to_geonameid: HashMap<usize, u32_le>,
-    tree: ImmutableKdTree<f32, u32, 2, 32>,
 }
 
 impl EngineData {
@@ -102,8 +97,6 @@ impl EngineData {
     pub fn as_engine(&self) -> Result<Engine, Box<dyn std::error::Error>> {
         Ok(Engine {
             data: rkyv::access::<_, rkyv::rancor::Error>(&self.data)?,
-            tree_index_to_geonameid: &self.tree_index_to_geonameid,
-            tree: &self.tree,
             #[cfg(feature = "geoip2")]
             geoip2: if let Some(geoip2) = &self.geoip2 {
                 Reader::<City>::from_bytes(geoip2)
@@ -118,8 +111,6 @@ impl EngineData {
 
 pub struct Engine<'a> {
     pub data: &'a ArchivedIndexData,
-    tree_index_to_geonameid: &'a HashMap<usize, u32_le>,
-    tree: &'a ImmutableKdTree<f32, u32, 2, 32>,
     #[cfg(feature = "geoip2")]
     geoip2: Option<Reader<'a, City<'a>>>,
 }
@@ -251,6 +242,7 @@ impl Engine<'_> {
         let mut i2;
 
         let items = &mut self
+            .data
             .tree
             .nearest_n::<SquaredEuclidean>(&[loc.0, loc.1], nearest_limit);
 
@@ -263,7 +255,10 @@ impl Engine<'_> {
                     .collect::<Vec<_>>();
 
                 i1 = items.iter_mut().filter_map(move |nearest| {
-                    let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                    let geonameid = self
+                        .data
+                        .tree_index_to_geonameid
+                        .get(&u32_le::from(nearest.item))?;
                     let city = self.data.geonames.get(geonameid)?;
                     let country = city.country.as_ref()?;
                     if countries.contains(&country.code.as_str()) {
@@ -275,7 +270,10 @@ impl Engine<'_> {
                 &mut i1
             } else {
                 i2 = items.iter_mut().filter_map(|nearest| {
-                    let geonameid = self.tree_index_to_geonameid.get(&(nearest.item as usize))?;
+                    let geonameid = self
+                        .data
+                        .tree_index_to_geonameid
+                        .get(&u32_le::from(nearest.item))?;
                     let city = self.data.geonames.get(geonameid)?;
                     Some((nearest, city))
                 });
@@ -348,33 +346,9 @@ impl Engine<'_> {
 impl TryFrom<IndexData> for EngineData {
     type Error = rkyv::rancor::Error;
     fn try_from(data: IndexData) -> Result<EngineData, Self::Error> {
-        let mut items = data
-            .geonames
-            .values()
-            .map(|record| (record.id, [record.latitude, record.longitude]))
-            .collect::<Vec<_>>();
-
-        items.sort_unstable_by_key(|item| item.0);
-        items.dedup_by_key(|item| item.0);
-
-        let tree_index_to_geonameid = HashMap::from_iter(
-            items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| (index, u32_le::from_native(item.0))),
-        );
-        let tree = ImmutableKdTree::new_from_slice(
-            items
-                .into_iter()
-                .map(|item| item.1)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
         Ok(EngineData {
             data: rkyv::to_bytes(&data)?,
             metadata: None,
-            tree_index_to_geonameid,
-            tree,
             #[cfg(feature = "geoip2")]
             geoip2: None,
         })
@@ -384,40 +358,9 @@ impl TryFrom<IndexData> for EngineData {
 impl TryFrom<rkyv::util::AlignedVec> for EngineData {
     type Error = rkyv::rancor::Error;
     fn try_from(bytes: rkyv::util::AlignedVec) -> Result<EngineData, Self::Error> {
-        let data = rkyv::access::<ArchivedIndexData, rkyv::rancor::Error>(&bytes[..])?;
-
-        let mut items = data
-            .geonames
-            .values()
-            .map(|record| {
-                (
-                    record.id.to_native(),
-                    [record.latitude.to_native(), record.longitude.to_native()],
-                )
-            })
-            .collect::<Vec<_>>();
-
-        items.sort_unstable_by_key(|item| item.0);
-        items.dedup_by_key(|item| item.0);
-
-        let tree_index_to_geonameid = HashMap::from_iter(
-            items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| (index, u32_le::from_native(item.0))),
-        );
-        let tree = ImmutableKdTree::new_from_slice(
-            items
-                .into_iter()
-                .map(|item| item.1)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
         Ok(EngineData {
             data: bytes,
             metadata: None,
-            tree_index_to_geonameid,
-            tree,
             #[cfg(feature = "geoip2")]
             geoip2: None,
         })

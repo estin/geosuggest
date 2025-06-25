@@ -6,6 +6,7 @@ use std::error::Error;
 #[cfg(feature = "oaph")]
 use oaph::schemars::{self, JsonSchema};
 
+use kiddo::immutable::float::kdtree::ImmutableKdTree;
 use rkyv::collections::swiss_table::ArchivedHashMap;
 use rkyv::option::ArchivedOption;
 use rkyv::rend::{f32_le, u32_le};
@@ -52,6 +53,8 @@ pub struct IndexData {
     pub geonames: HashMap<u32, CitiesRecord>,
     pub capitals: HashMap<String, u32>,
     pub country_info_by_code: HashMap<String, CountryRecord>,
+    pub tree: ImmutableKdTree<f32, u32, 2, 32>,
+    pub tree_index_to_geonameid: HashMap<usize, u32>,
 }
 
 #[derive(Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
@@ -782,9 +785,25 @@ impl IndexData {
         geonames.sort_unstable_by_key(|item| item.id);
         geonames.dedup_by_key(|item| item.id);
 
+        let tree_index_to_geonameid = HashMap::from_iter(
+            geonames
+                .iter()
+                .enumerate()
+                .map(|(index, item)| (index, item.id)),
+        );
+        let tree = ImmutableKdTree::new_from_slice(
+            geonames
+                .iter()
+                .map(|item| [item.latitude, item.longitude])
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+
         let data = IndexData {
-            geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
+            tree,
+            tree_index_to_geonameid,
             entries,
+            geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
             country_info_by_code: if let Some(country_by_code) = country_by_code {
                 HashMap::from_iter(country_by_code.into_iter().map(|(code, country)| {
                     let country_record = CountryRecord {
