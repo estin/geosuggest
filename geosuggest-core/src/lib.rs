@@ -94,7 +94,7 @@ impl EngineData {
         Ok(())
     }
 
-    pub fn as_engine(&self) -> Result<Engine, Box<dyn std::error::Error>> {
+    pub fn as_engine(&self) -> Result<Engine<'_>, Box<dyn std::error::Error>> {
         Ok(Engine {
             data: rkyv::access::<_, rkyv::rancor::Error>(&self.data)?,
             #[cfg(feature = "geoip2")]
@@ -225,7 +225,7 @@ impl Engine<'_> {
         limit: usize,
         k: Option<f32>,
         countries: Option<&[T]>,
-    ) -> Option<Vec<ArchivedReverseItem>> {
+    ) -> Option<Vec<ArchivedReverseItem<'_>>> {
         if limit == 0 {
             return None;
         }
