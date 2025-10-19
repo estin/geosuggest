@@ -100,7 +100,7 @@ See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosu
 ## Test
 
 ```console
-$ cargo test --workspace --all-features
+$ cargo test --workspace
 ```
 
 ## License

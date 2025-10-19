@@ -36,7 +36,7 @@ config.workspace = true
 geosuggest-core = { path = "../geosuggest-core", version = "0.8", features = ["oaph"] }
 
 # openapi3
-oaph.workspace = true 
+oaph.workspace = true
 
 [dev-dependencies]
 serde_json = "1"
