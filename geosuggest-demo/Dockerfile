@@ -1,4 +1,4 @@
-FROM rust:1.84-slim-bullseye
+FROM rust:1.90-slim-bullseye
 
 ARG GEOSUGGEST_BASE_API_URL=$GEOSUGGEST_BASE_API_URL
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
@@ -17,7 +17,7 @@ RUN cd /root \
     && cargo build --release --features=tokio,cli
 
 # index
-RUN cd /tmp \ 
+RUN cd /tmp \
     && curl -sL http://download.geonames.org/export/dump/$CITIES.zip --output $CITIES.zip \
     && curl -sL http://download.geonames.org/export/dump/alternateNamesV2.zip --output alternateNamesV2.zip \
     && curl -sL http://download.geonames.org/export/dump/admin1CodesASCII.txt --output /tmp/admin1CodesASCII.txt \
