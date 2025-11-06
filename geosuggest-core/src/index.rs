@@ -353,10 +353,10 @@ impl IndexData {
         let mut geonames: Vec<CitiesRecord> = Vec::with_capacity(records.len());
         let mut entries: Vec<Entry> = Vec::with_capacity(
             records.len()
-                * if !filter_languages.is_empty() {
-                    filter_languages.len()
-                } else {
+                * if filter_languages.is_empty() {
                     1
+                } else {
+                    filter_languages.len()
                 },
         );
 
