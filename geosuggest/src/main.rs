@@ -487,7 +487,7 @@ async fn main() -> std::io::Result<()> {
     #[cfg(feature = "tracing")]
     tracing::info!("Listen on {}", listen_on);
 
-    web::server(move || {
+    web::server(async move || {
         let shared_engine = shared_engine_clone.clone();
         let settings = settings_clone.clone();
 
