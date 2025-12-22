@@ -208,9 +208,10 @@ async fn SuggestItems<'a, G: Html>(cx: Scope<'a>, props: SuggestProps<'a>) -> Vi
                         if let Some(data) = items.get().as_ref() {
                             if let Ok(d) = data {
                                 let views = View::new_fragment(
-                                    d.items.iter().cloned().map(|item| {
+                                    d.items.iter().map(|item| {
                                         let country = item.get_country().to_owned();
                                         let name = item.name.to_owned();
+                                        let item = item.clone();
                                         view! { cx,
                                             li(on:click=move |_| handle_select(item.clone()),class="px-2 py-3 space-x-2 hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white focus:outline-none"){
                                                 (name) " " (country)
