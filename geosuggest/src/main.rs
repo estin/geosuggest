@@ -50,10 +50,46 @@ pub struct GetCityQuery {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCapitalQuery {
+    lat: Option<f32>,
+    lng: Option<f32>,
+    /// IP to check, if not declared then `Forwarded` header will used or peer ip as last chance
+    #[cfg(feature = "geoip2")]
+    ip: Option<String>,
     /// geonameid of the City
-    country_code: String,
+    country_code: Option<String>,
     /// isolanguage code
     lang: Option<String>,
+}
+
+pub enum GetCapitalLookup<'a> {
+    Coords {
+        lat: f32,
+        lng: f32,
+    },
+    CountryCode(&'a str),
+    #[cfg(feature = "geoip2")]
+    Ip(&'a str),
+}
+
+impl<'a> TryFrom<&'a GetCapitalQuery> for GetCapitalLookup<'a> {
+    type Error = &'static str;
+
+    fn try_from(value: &'a GetCapitalQuery) -> Result<Self, Self::Error> {
+        if let Some((lat, lng)) = value.lat.zip(value.lng) {
+            return Ok(Self::Coords { lat, lng });
+        }
+
+        #[cfg(feature = "geoip2")]
+        if let Some(ip) = &value.ip {
+            return Ok(Self::Ip(ip));
+        }
+
+        if let Some(country_code) = &value.country_code {
+            return Ok(Self::CountryCode(country_code));
+        }
+
+        Err("no capital lookup provided")
+    }
 }
 
 // TODO self.countries.split(",").as_slice()
@@ -254,15 +290,65 @@ pub async fn city_get(
     })
 }
 
+#[cfg(feature = "geoip2")]
+fn extract_ip_addr(ip_param: Option<&str>, req: &HttpRequest) -> Result<IpAddr, String> {
+    let conn_info = req.connection_info();
+    ip_param
+        .filter(|ip| *ip != "client")
+        .or_else(|| {
+            req.headers()
+                .get(ntex::http::header::FORWARDED)
+                .and_then(|val| val.to_str().ok())
+        })
+        .or_else(|| {
+            conn_info
+                .remote()
+                .and_then(|remote| remote.split(':').take(1).next())
+        })
+        .map(|ip_str| {
+            IpAddr::from_str(ip_str)
+                .map_err(|err| format!("Invalid ip addr: {ip_str} error: {err}"))
+        })
+        .or_else(|| req.peer_addr().map(|addr| Ok(addr.ip())))
+        .ok_or_else(|| "IP address not provided".to_owned())
+        .flatten()
+}
+
 pub async fn capital(
     engine: web::types::State<SharedEngine>,
     web::types::Query(query): web::types::Query<GetCapitalQuery>,
-    _req: HttpRequest,
+    req: HttpRequest,
 ) -> HttpResponse {
     let now = Instant::now();
 
-    let city = engine
-        .capital(&query.country_code)
+    let lookup = match GetCapitalLookup::try_from(&query) {
+        Ok(lookup) => lookup,
+        Err(err) => return HttpResponse::BadRequest().body(err),
+    };
+
+    let country_code = match lookup {
+        GetCapitalLookup::Coords { lat, lng } => engine
+            .reverse::<&str>((lat, lng), 1, None, None)
+            .and_then(|items| items.into_iter().next())
+            .and_then(|item| item.city.country.as_ref())
+            .map(|country| country.code.as_str()),
+        #[cfg(feature = "geoip2")]
+        GetCapitalLookup::Ip(ip) => {
+            let addr = match extract_ip_addr(Some(ip), &req) {
+                Ok(addr) => addr,
+                Err(err) => return HttpResponse::BadRequest().body(err),
+            };
+
+            engine
+                .geoip2_lookup(addr)
+                .and_then(|city| city.country.as_ref())
+                .map(|country| country.code.as_str())
+        }
+        GetCapitalLookup::CountryCode(country_code) => Some(country_code),
+    };
+
+    let city = country_code
+        .and_then(|country_code| engine.capital(country_code))
         .map(|city| CityResultItem::from_city(city, query.lang.as_deref()));
 
     HttpResponse::Ok().json(&GetCapitalResult {
@@ -333,44 +419,9 @@ pub async fn geoip2(
 ) -> HttpResponse {
     let now = Instant::now();
 
-    let ip = match query.ip.as_ref() {
-        Some(ip) => Some(ip.as_str()),
-        None => {
-            // fallback to headers
-            if let Some(forwarded) = req.headers().get(ntex::http::header::FORWARDED) {
-                forwarded.to_str().ok()
-            } else {
-                None
-            }
-        }
-    };
-
-    let addr = match ip {
-        Some(ip) => match IpAddr::from_str(ip) {
-            Ok(addr) => addr,
-            Err(e) => {
-                return HttpResponse::BadRequest()
-                    .body(format!("Invalid ip addr: {} error: {}", ip, e))
-            }
-        },
-        None => {
-            if let Some(v) = req.connection_info().remote() {
-                if let Ok(ip) = IpAddr::from_str(v.split(':').take(1).next().unwrap_or("")) {
-                    ip
-                } else {
-                    return HttpResponse::BadRequest().body(
-                        "IP address is not declared in request and field to get peer addr"
-                            .to_string(),
-                    );
-                }
-            } else if let Some(peer_addr) = req.peer_addr() {
-                peer_addr.ip()
-            } else {
-                return HttpResponse::BadRequest().body(
-                    "IP address is not declared in request and field to get peer addr".to_string(),
-                );
-            }
-        }
+    let addr = match extract_ip_addr(query.ip.as_deref(), &req) {
+        Ok(addr) => addr,
+        Err(err) => return HttpResponse::BadRequest().body(err),
     };
 
     let result = engine.geoip2_lookup(addr);
