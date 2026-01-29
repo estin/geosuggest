@@ -66,7 +66,7 @@ async fn api_get() -> Result<(), Error> {
 }
 
 #[test_log::test(ntex::test)]
-async fn api_capital() -> Result<(), Error> {
+async fn api_capital_country_code() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
     let req = test::TestRequest::get()
@@ -83,6 +83,66 @@ async fn api_capital() -> Result<(), Error> {
     assert!(city.is_some());
     let city = city.unwrap();
     assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Moscow");
+
+    Ok(())
+}
+
+#[test_log::test(ntex::test)]
+async fn api_capital_coordinates() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/capital?lat=55.7558&lng=37.6173")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let city = result.get("city").unwrap().as_object().unwrap();
+    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Moscow");
+
+    Ok(())
+}
+
+#[cfg(feature = "geoip2")]
+#[test_log::test(ntex::test)]
+async fn api_capital_ip() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/capital?ip=81.2.69.142")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let city = result.get("city").unwrap().as_object().unwrap();
+    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "London");
+
+    Ok(())
+}
+
+#[cfg(feature = "geoip2")]
+#[test_log::test(ntex::test)]
+async fn api_capital_ip_client() -> Result<(), Error> {
+    let app = test::init_service(App::new().configure(app_config)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/capital?ip=client")
+        .header(ntex::http::header::FORWARDED, "81.2.69.142")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let bytes = test::read_body(resp).await;
+    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
+    let city = result.get("city").unwrap().as_object().unwrap();
+    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "London");
 
     Ok(())
 }
