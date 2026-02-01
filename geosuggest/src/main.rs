@@ -71,24 +71,20 @@ pub enum GetCapitalLookup<'a> {
     Ip(&'a str),
 }
 
-impl<'a> TryFrom<&'a GetCapitalQuery> for GetCapitalLookup<'a> {
-    type Error = &'static str;
-
-    fn try_from(value: &'a GetCapitalQuery) -> Result<Self, Self::Error> {
-        if let Some((lat, lng)) = value.lat.zip(value.lng) {
-            return Ok(Self::Coords { lat, lng });
-        }
-
-        #[cfg(feature = "geoip2")]
-        if let Some(ip) = &value.ip {
-            return Ok(Self::Ip(ip));
-        }
-
-        if let Some(country_code) = &value.country_code {
-            return Ok(Self::CountryCode(country_code));
-        }
-
-        Err("no capital lookup provided")
+impl GetCapitalQuery {
+    fn lookups<'a>(&'a self) -> impl Iterator<Item = GetCapitalLookup<'a>> {
+        [
+            self.lat
+                .zip(self.lng)
+                .map(|(lat, lng)| GetCapitalLookup::Coords { lat, lng }),
+            #[cfg(feature = "geoip2")]
+            self.ip.as_deref().map(|ip| GetCapitalLookup::Ip(ip)),
+            self.country_code
+                .as_deref()
+                .map(|country_code| GetCapitalLookup::CountryCode(country_code)),
+        ]
+        .into_iter()
+        .filter_map(|opt| opt)
     }
 }
 
@@ -314,19 +310,12 @@ fn extract_ip_addr(ip_param: Option<&str>, req: &HttpRequest) -> Result<IpAddr, 
         .flatten()
 }
 
-pub async fn capital(
-    engine: web::types::State<SharedEngine>,
-    web::types::Query(query): web::types::Query<GetCapitalQuery>,
-    req: HttpRequest,
-) -> HttpResponse {
-    let now = Instant::now();
-
-    let lookup = match GetCapitalLookup::try_from(&query) {
-        Ok(lookup) => lookup,
-        Err(err) => return HttpResponse::BadRequest().body(err),
-    };
-
-    let country_code = match lookup {
+fn get_country_code<'a>(
+    engine: &'a SharedEngine,
+    lookup: GetCapitalLookup<'a>,
+    req: &'a HttpRequest,
+) -> Result<Option<&'a str>, String> {
+    Ok(match lookup {
         GetCapitalLookup::Coords { lat, lng } => engine
             .reverse::<&str>((lat, lng), 1, None, None)
             .and_then(|items| items.into_iter().next())
@@ -334,10 +323,7 @@ pub async fn capital(
             .map(|country| country.code.as_str()),
         #[cfg(feature = "geoip2")]
         GetCapitalLookup::Ip(ip) => {
-            let addr = match extract_ip_addr(Some(ip), &req) {
-                Ok(addr) => addr,
-                Err(err) => return HttpResponse::BadRequest().body(err),
-            };
+            let addr = extract_ip_addr(Some(ip), &req)?;
 
             engine
                 .geoip2_lookup(addr)
@@ -345,15 +331,45 @@ pub async fn capital(
                 .map(|country| country.code.as_str())
         }
         GetCapitalLookup::CountryCode(country_code) => Some(country_code),
-    };
+    })
+}
 
-    let city = country_code
-        .and_then(|country_code| engine.capital(country_code))
-        .map(|city| CityResultItem::from_city(city, query.lang.as_deref()));
+pub async fn capital(
+    engine: web::types::State<SharedEngine>,
+    web::types::Query(query): web::types::Query<GetCapitalQuery>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let now = Instant::now();
+
+    let mut err = None;
+
+    for lookup in query.lookups() {
+        let country_code = match get_country_code(&engine, lookup, &req) {
+            Ok(Some(country_code)) => country_code,
+            Ok(None) => continue,
+            Err(e) => {
+                err = Some(e);
+                continue;
+            }
+        };
+
+        let Some(city) = engine.capital(country_code) else {
+            continue;
+        };
+
+        return HttpResponse::Ok().json(&GetCapitalResult {
+            time: now.elapsed().as_millis() as usize,
+            city: Some(CityResultItem::from_city(city, query.lang.as_deref())),
+        });
+    }
+
+    if let Some(err) = err {
+        return HttpResponse::BadRequest().body(err);
+    }
 
     HttpResponse::Ok().json(&GetCapitalResult {
         time: now.elapsed().as_millis() as usize,
-        city,
+        city: None,
     })
 }
 
