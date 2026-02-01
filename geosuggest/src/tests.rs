@@ -92,7 +92,7 @@ async fn api_capital_coordinates() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
     let req = test::TestRequest::get()
-        .uri("/capital?lat=55.7558&lng=37.6173")
+        .uri("/capital?lat=55.7558&lng=37.6173&country_code=GB")
         .to_request();
     let resp = app.call(req).await.unwrap();
 
@@ -112,7 +112,7 @@ async fn api_capital_ip() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
     let req = test::TestRequest::get()
-        .uri("/capital?ip=81.2.69.142")
+        .uri("/capital?ip=81.2.69.142&country_code=RU")
         .to_request();
     let resp = app.call(req).await.unwrap();
 
@@ -132,7 +132,7 @@ async fn api_capital_ip_client() -> Result<(), Error> {
     let app = test::init_service(App::new().configure(app_config)).await;
 
     let req = test::TestRequest::get()
-        .uri("/capital?ip=client")
+        .uri("/capital?ip=client&country_code=RU")
         .header(ntex::http::header::FORWARDED, "81.2.69.142")
         .to_request();
     let resp = app.call(req).await.unwrap();
