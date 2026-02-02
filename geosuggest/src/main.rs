@@ -78,13 +78,13 @@ impl GetCapitalQuery {
                 .zip(self.lng)
                 .map(|(lat, lng)| GetCapitalLookup::Coords { lat, lng }),
             #[cfg(feature = "geoip2")]
-            self.ip.as_deref().map(|ip| GetCapitalLookup::Ip(ip)),
+            self.ip.as_deref().map(GetCapitalLookup::Ip),
             self.country_code
                 .as_deref()
-                .map(|country_code| GetCapitalLookup::CountryCode(country_code)),
+                .map(GetCapitalLookup::CountryCode),
         ]
         .into_iter()
-        .filter_map(|opt| opt)
+        .flatten()
     }
 }
 
@@ -323,7 +323,7 @@ fn get_country_code<'a>(
             .map(|country| country.code.as_str()),
         #[cfg(feature = "geoip2")]
         GetCapitalLookup::Ip(ip) => {
-            let addr = extract_ip_addr(Some(ip), &req)?;
+            let addr = extract_ip_addr(Some(ip), req)?;
 
             engine
                 .geoip2_lookup(addr)
