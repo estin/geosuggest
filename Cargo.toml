@@ -36,7 +36,7 @@ ntex-files = "3"
 ntex-cors  = "3"
 
 # utils
-zip = "7"
+zip = "8"
 reqwest = { version = "0.12", features = [
   "rustls-tls",
 ], default-features = false }
