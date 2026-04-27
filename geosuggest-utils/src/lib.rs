@@ -92,7 +92,7 @@ impl<'a> IndexUpdater<'a> {
             results.push("admin1_codes");
         }
         let responses = futures::future::join_all(requests).await;
-        let results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
+        let results: HashMap<_, _> = results.into_iter().zip(responses).collect();
 
         for (entry, etag) in results {
             let current_etag = metadata
@@ -186,7 +186,7 @@ impl<'a> IndexUpdater<'a> {
             results.push("admin2_codes");
         }
         let responses = futures::future::join_all(requests).await;
-        let mut results: HashMap<_, _> = results.into_iter().zip(responses.into_iter()).collect();
+        let mut results: HashMap<_, _> = results.into_iter().zip(responses).collect();
 
         let etag = results
             .iter()
