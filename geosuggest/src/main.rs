@@ -561,8 +561,8 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .state(shared_engine)
             // enable logger
-            .wrap(middleware::Logger::default())
-            .wrap(Cors::default())
+            .middleware(middleware::Logger::default())
+            .middleware(Cors::default())
             .service(
                 web::scope(&settings.url_path_prefix)
                     .service((
