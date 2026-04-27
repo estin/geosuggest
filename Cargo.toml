@@ -38,7 +38,7 @@ ntex-cors  = "3"
 # utils
 zip = "8"
 reqwest = { version = "0.13", features = [
-  "rustls-tls",
+  "rustls",
 ], default-features = false }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 futures = "0.3"
