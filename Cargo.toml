@@ -27,7 +27,7 @@ kiddo      = { version = "5.2", default-features = false, features = ["rkyv_08"]
 geoip2     = "0.1.7"
 
 rkyv      = { version = "0.8" }
-itertools = "0.14"
+itertools = "0.15"
 
 # service
 oaph       = { version = "0.2" }
