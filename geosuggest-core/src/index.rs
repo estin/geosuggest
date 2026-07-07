@@ -6,7 +6,7 @@ use std::error::Error;
 #[cfg(feature = "oaph")]
 use oaph::schemars::{self, JsonSchema};
 
-use kiddo::immutable::float::kdtree::ImmutableKdTree;
+use kiddo::ImmutableKdTree;
 use rkyv::collections::swiss_table::ArchivedHashMap;
 use rkyv::option::ArchivedOption;
 use rkyv::rend::{f32_le, u32_le};
@@ -47,13 +47,13 @@ pub struct SourceFileContentOptions<'a> {
     pub filter_languages: Vec<&'a str>,
 }
 
-#[derive(Clone, rkyv::Deserialize, rkyv::Serialize, rkyv::Archive)]
+#[derive(rkyv::Deserialize, rkyv::Serialize, rkyv::Archive)]
 pub struct IndexData {
     pub entries: Vec<Entry>,
     pub geonames: HashMap<u32, CitiesRecord>,
     pub capitals: HashMap<String, u32>,
     pub country_info_by_code: HashMap<String, CountryRecord>,
-    pub tree: ImmutableKdTree<f32, u32, 2, 32>,
+    pub tree: ImmutableKdTree<f32, 2>,
     pub tree_index_to_geonameid: HashMap<usize, u32>,
 }
 
@@ -797,7 +797,7 @@ impl IndexData {
                 .map(|item| [item.latitude, item.longitude])
                 .collect::<Vec<_>>()
                 .as_slice(),
-        );
+        )?;
 
         let data = IndexData {
             tree,
