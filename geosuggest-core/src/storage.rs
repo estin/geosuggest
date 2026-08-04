@@ -56,7 +56,7 @@ impl Storage {
         let metadata_len = u32::from_be_bytes(metadata_len);
         let _ = buf.seek(SeekFrom::Current(metadata_len as i64))?;
 
-        let mut bytes = rkyv::util::AlignedVec::new();
+        let mut bytes = rkyv::util::AlignedVec::<128>::new();
         bytes.extend_from_reader(buf)?;
 
         Ok(bytes.try_into()?)

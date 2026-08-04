@@ -78,7 +78,7 @@ impl Default for EngineMetadata {
 }
 
 pub struct EngineData {
-    pub data: rkyv::util::AlignedVec,
+    pub data: rkyv::util::AlignedVec<128>,
     pub metadata: Option<EngineMetadata>,
     #[cfg(feature = "geoip2")]
     pub geoip2: Option<Vec<u8>>,
@@ -244,7 +244,9 @@ impl Engine<'_> {
         let items = &mut self
             .data
             .tree
-            .nearest_n::<SquaredEuclidean>(&[loc.0, loc.1], nearest_limit);
+            .query(&[loc.0, loc.1])
+            .nearest_n::<SquaredEuclidean<f32>>(nearest_limit)
+            .execute();
 
         let items: &mut dyn Iterator<Item = (_, &ArchivedCitiesRecord)> =
             if let Some(countries) = countries {
@@ -347,7 +349,10 @@ impl TryFrom<IndexData> for EngineData {
     type Error = rkyv::rancor::Error;
     fn try_from(data: IndexData) -> Result<EngineData, Self::Error> {
         Ok(EngineData {
-            data: rkyv::to_bytes(&data)?,
+            data: rkyv::api::high::to_bytes_in::<_, rkyv::rancor::Error>(
+                &data,
+                rkyv::util::AlignedVec::<128>::new(),
+            )?,
             metadata: None,
             #[cfg(feature = "geoip2")]
             geoip2: None,
@@ -355,9 +360,9 @@ impl TryFrom<IndexData> for EngineData {
     }
 }
 
-impl TryFrom<rkyv::util::AlignedVec> for EngineData {
+impl TryFrom<rkyv::util::AlignedVec<128>> for EngineData {
     type Error = rkyv::rancor::Error;
-    fn try_from(bytes: rkyv::util::AlignedVec) -> Result<EngineData, Self::Error> {
+    fn try_from(bytes: rkyv::util::AlignedVec<128>) -> Result<EngineData, Self::Error> {
         Ok(EngineData {
             data: bytes,
             metadata: None,
