@@ -46,6 +46,10 @@ struct Files {
     #[arg(long)]
     languages: Option<String>,
 
+    /// Excluded GeoNames feature codes (comma separated). Full replacement of the default exclusion list; empty excludes nothing. Defaults to PPLA3,PPLA4,PPLA5,PPLF,PPLL,PPLQ,PPLW,PPLX,STLMT
+    #[arg(long)]
+    excluded_feature_codes: Option<String>,
+
     /// Dump index to file
     #[arg(long)]
     output: String,
@@ -86,6 +90,10 @@ struct Urls {
     /// Languages
     #[arg(long)]
     languages: Option<String>,
+
+    /// Excluded GeoNames feature codes (comma separated). Full replacement of the default exclusion list; empty excludes nothing. Defaults to PPLA3,PPLA4,PPLA5,PPLF,PPLL,PPLQ,PPLW,PPLX,STLMT
+    #[arg(long)]
+    excluded_feature_codes: Option<String>,
 
     /// Dump index to file
     #[arg(long)]
@@ -139,6 +147,10 @@ async fn main() -> Result<()> {
                 settings.filter_languages = languages.split(',').map(AsRef::as_ref).collect();
             }
 
+            if let Some(codes) = &args.excluded_feature_codes {
+                settings.excluded_feature_codes = codes.split(',').map(AsRef::as_ref).collect();
+            }
+
             let engine = IndexUpdater::new(settings)?
                 .build()
                 .await
@@ -160,6 +172,11 @@ async fn main() -> Result<()> {
                     languages.split(',').map(AsRef::as_ref).collect()
                 } else {
                     Vec::new()
+                },
+                excluded_feature_codes: if let Some(codes) = &args.excluded_feature_codes {
+                    codes.split(',').map(AsRef::as_ref).collect()
+                } else {
+                    geosuggest_core::index::DEFAULT_EXCLUDED_FEATURE_CODES.to_vec()
                 },
             })
             .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;

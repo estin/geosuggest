@@ -13,6 +13,22 @@ fn get_engine_data(
     countries: Option<&str>,
     filter_languages: Vec<&str>,
 ) -> Result<geosuggest_core::EngineData, Box<dyn Error>> {
+    get_engine_data_with_excluded(
+        cities,
+        names,
+        countries,
+        filter_languages,
+        geosuggest_core::index::DEFAULT_EXCLUDED_FEATURE_CODES.to_vec(),
+    )
+}
+
+fn get_engine_data_with_excluded(
+    cities: Option<&str>,
+    names: Option<&str>,
+    countries: Option<&str>,
+    filter_languages: Vec<&str>,
+    excluded_feature_codes: Vec<&str>,
+) -> Result<geosuggest_core::EngineData, Box<dyn Error>> {
     let data = IndexData::new_from_files(SourceFileOptions {
         cities: cities.unwrap_or("tests/misc/cities.txt"),
         names: Some(names.unwrap_or("tests/misc/names.txt")),
@@ -20,6 +36,7 @@ fn get_engine_data(
         filter_languages,
         admin1_codes: Some("tests/misc/admin1-codes.txt"),
         admin2_codes: Some("tests/misc/admin2-codes.txt"),
+        excluded_feature_codes,
     })?;
 
     let mut engine_data = EngineData::try_from(data)?;
@@ -52,6 +69,26 @@ fn suggest() -> Result<(), Box<dyn Error>> {
 
     let items = engine.suggest("Beverley", 1, None, Some(&["GB"]));
     assert_eq!(items.len(), 1);
+
+    Ok(())
+}
+
+#[test_log::test]
+fn excluded_feature_codes_changes_index() -> Result<(), Box<dyn Error>> {
+    // Beverley is PPLA2 (included by default list).
+    let default_data = get_engine_data(None, None, None, vec![])?;
+    let default_engine = default_data.as_engine()?;
+    assert_eq!(default_engine.suggest::<&str>("Beverley", 1, None, None).len(), 1);
+
+    // Excluding PPLA2 drops it from the index.
+    let custom_data = get_engine_data_with_excluded(None, None, None, vec![], vec!["PPLA2"])?;
+    let custom_engine = custom_data.as_engine()?;
+    assert_eq!(custom_engine.suggest::<&str>("Beverley", 1, None, None).len(), 0);
+
+    // Empty list excludes nothing: Beverley is back.
+    let all_data = get_engine_data_with_excluded(None, None, None, vec![], vec![])?;
+    let all_engine = all_data.as_engine()?;
+    assert_eq!(all_engine.suggest::<&str>("Beverley", 1, None, None).len(), 1);
 
     Ok(())
 }

@@ -15,6 +15,7 @@ fn app_config(cfg: &mut ServiceConfig) {
         filter_languages: vec!["ru"],
         admin1_codes: Some("../geosuggest-core/tests/misc/admin1-codes.txt"),
         admin2_codes: Some("../geosuggest-core/tests/misc/admin2-codes.txt"),
+        excluded_feature_codes: geosuggest_core::index::DEFAULT_EXCLUDED_FEATURE_CODES.to_vec(),
     })
     .unwrap();
 

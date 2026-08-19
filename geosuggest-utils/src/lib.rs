@@ -28,6 +28,7 @@ pub struct IndexUpdaterSettings<'a> {
     pub admin1_codes_url: Option<&'a str>,
     pub admin2_codes_url: Option<&'a str>,
     pub filter_languages: Vec<&'a str>,
+    pub excluded_feature_codes: Vec<&'a str>,
 }
 
 impl Default for IndexUpdaterSettings<'_> {
@@ -48,6 +49,7 @@ impl Default for IndexUpdaterSettings<'_> {
             ),
             admin2_codes_url: Some("https://download.geonames.org/export/dump/admin2Codes.txt"),
             filter_languages: Vec::new(),
+            excluded_feature_codes: geosuggest_core::index::DEFAULT_EXCLUDED_FEATURE_CODES.to_vec(),
             // max_payload_size: 200 * 1024 * 1024,
         }
     }
@@ -231,6 +233,7 @@ impl<'a> IndexUpdater<'a> {
                 None
             },
             filter_languages: self.settings.filter_languages.clone(),
+            excluded_feature_codes: self.settings.excluded_feature_codes.to_vec(),
         })
         .map_err(|e| anyhow::anyhow!("Failed to build index: {e}"))?;
 

@@ -29,6 +29,10 @@ fn split_content_to_n_parts(content: &str, n: usize) -> Vec<String> {
     lines.chunks(n).map(|chunk| chunk.join("\n")).collect()
 }
 
+pub const DEFAULT_EXCLUDED_FEATURE_CODES: &[&str] = &[
+    "PPLA3", "PPLA4", "PPLA5", "PPLF", "PPLL", "PPLQ", "PPLW", "PPLX", "STLMT",
+];
+
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
     pub names: Option<P>,
@@ -36,6 +40,7 @@ pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub admin1_codes: Option<P>,
     pub admin2_codes: Option<P>,
     pub filter_languages: Vec<&'a str>,
+    pub excluded_feature_codes: Vec<&'a str>,
 }
 
 pub struct SourceFileContentOptions<'a> {
@@ -45,6 +50,7 @@ pub struct SourceFileContentOptions<'a> {
     pub admin1_codes: Option<String>,
     pub admin2_codes: Option<String>,
     pub filter_languages: Vec<&'a str>,
+    pub excluded_feature_codes: Vec<&'a str>,
 }
 
 #[derive(rkyv::Deserialize, rkyv::Serialize, rkyv::Archive)]
@@ -290,6 +296,7 @@ impl IndexData {
             filter_languages,
             admin1_codes,
             admin2_codes,
+            excluded_feature_codes,
         }: SourceFileOptions<P>,
     ) -> Result<Self, Box<dyn Error>> {
         Self::new_from_files_content(SourceFileContentOptions {
@@ -315,6 +322,7 @@ impl IndexData {
                 None
             },
             filter_languages,
+            excluded_feature_codes,
         })
     }
     pub fn new_from_files_content(
@@ -325,6 +333,7 @@ impl IndexData {
             filter_languages,
             admin1_codes,
             admin2_codes,
+            excluded_feature_codes,
         }: SourceFileContentOptions,
     ) -> Result<Self, Box<dyn Error>> {
         #[cfg(feature = "tracing")]
@@ -669,12 +678,10 @@ impl IndexData {
             // STLMT israeli settlement
 
             let feature_code = record.feature_code.as_str();
-            match feature_code {
-                "PPLA3" | "PPLA4" | "PPLA5" | "PPLF" | "PPLL" | "PPLQ" | "PPLW" | "PPLX"
-                | "STLMT" => continue,
-                _ => {}
-            };
-
+            // excluded_feature_codes defaults to DEFAULT_EXCLUDED_FEATURE_CODES (see its doc); narrower lists opt extra codes in.
+            if excluded_feature_codes.contains(&feature_code) {
+                continue;
+            }
             let is_capital = feature_code == "PPLC";
 
             let country_id = country_by_code
