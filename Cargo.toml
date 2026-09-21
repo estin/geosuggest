@@ -33,7 +33,7 @@ itertools = "0.15"
 oaph       = { version = "0.2" }
 ntex       = { version = "3.7", features=["tokio"] }
 ntex-files = "3"
-ntex-cors  = "3"
+ntex-cors  = "4"
 
 # utils
 zip = "8"
