@@ -149,24 +149,23 @@ impl Engine<'_> {
         let min_score = min_score.unwrap_or(0.8);
         let normalized_pattern = pattern.to_lowercase();
 
-        // Ranked candidate. Order: score desc (within EPSILON), then
-        // population desc, then id. The id tiebreak only makes exact ties
-        // deterministic; no order was ever promised between them.
+        // Ranked candidate. Descending order: higher score first; within
+        // EPSILON, higher population first; exact ties by id so the order
+        // stays deterministic (no order was ever promised between them).
         #[derive(Clone, Copy)]
         struct Cand {
             score: f32,
             pop: u32,
             id: u32,
         }
-        fn rank(a: &Cand, b: &Cand) -> std::cmp::Ordering {
+        fn rank_desc(a: &Cand, b: &Cand) -> std::cmp::Ordering {
             if (a.score - b.score).abs() < f32::EPSILON {
-                b.pop
-                    .cmp(&a.pop)
-                    .then_with(|| a.id.cmp(&b.id))
-            } else if a.score > b.score {
-                std::cmp::Ordering::Greater
+                b.pop.cmp(&a.pop).then_with(|| a.id.cmp(&b.id))
             } else {
-                std::cmp::Ordering::Less
+                // same shape as the old comparator: higher score first
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
         }
 
@@ -174,8 +173,7 @@ impl Engine<'_> {
         // Matches the old collect-sort-unique-take result, except for the
         // order between exact cross-city ties (which was unspecified).
         fn select_top(mut cands: Vec<Cand>, limit: usize) -> Vec<Cand> {
-            // descending rank
-            cands.sort_unstable_by(|a, b| rank(b, a));
+            cands.sort_unstable_by(rank_desc);
             // linear dedup: `limit` is tiny (10 by default), so a scan
             // beats hashing here and needs no custom hasher
             let mut seen: Vec<u32> = Vec::new();
@@ -257,9 +255,11 @@ impl Engine<'_> {
     ///
     /// Optional: score results by `k` as `distance - k * city.population` and sort by score.
     ///
-    /// Optional: prefilter by countries. It fetches nearest in growing
-    /// rounds instead of the whole index at once; building an index for
-    /// concrete countries is still faster if the filter is always the same.
+    /// Optional: prefilter by countries. Filtered queries fetch nearest in
+    /// growing rounds instead of the whole index at once; building an index
+    /// for concrete countries is still faster if the filter is always the
+    /// same. A filter matching almost nothing still ends with one
+    /// full-index fetch.
     pub fn reverse<T: AsRef<str>>(
         &self,
         loc: (f32, f32),
@@ -302,7 +302,9 @@ impl Engine<'_> {
         // With a country filter, fetch nearest in growing rounds instead of
         // the whole index at once. Stopping at the first round that covers
         // `limit` in-country cities sees the same candidates, so results are
-        // identical while per-request memory stays bounded.
+        // identical. Typical filters stop after one or two small rounds; a
+        // filter matching nothing still ends with one full-index fetch,
+        // exactly like the old code always did.
         let mut results = loop {
             let nearest_limit = std::num::NonZero::new(round)?;
             let mut results = self

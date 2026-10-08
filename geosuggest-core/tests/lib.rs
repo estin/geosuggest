@@ -116,6 +116,34 @@ fn suggest_topk_invariants() -> Result<(), Box<dyn Error>> {
 }
 
 #[test_log::test]
+fn suggest_population_tiebreak() -> Result<(), Box<dyn Error>> {
+    use geosuggest_core::index::SourceFileContentOptions;
+
+    // two exact-prefix matches: same score 1.0, different populations
+    let cities = "1\tAbc\tAbc\t\t55.0\t37.0\tP\tPPL\tRU\t\t\t\t\t\t100\t\t\tEurope/Moscow\t2020-01-01\n\
+                  2\tAbcd\tAbcd\t\t55.1\t37.1\tP\tPPL\tRU\t\t\t\t\t\t1000000\t\t\tEurope/Moscow\t2020-01-01\n";
+    let data = IndexData::new_from_files_content(SourceFileContentOptions {
+        cities: cities.to_owned(),
+        names: None,
+        countries: None,
+        admin1_codes: None,
+        admin2_codes: None,
+        filter_languages: vec![],
+        excluded_feature_codes:
+            geosuggest_core::index::DEFAULT_EXCLUDED_FEATURE_CODES.to_vec(),
+    })?;
+    let engine_data = EngineData::try_from(data)?;
+    let engine = engine_data.as_engine()?;
+
+    let items = engine.suggest::<&str>("abc", 2, None, None);
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].name, "Abcd");
+    assert_eq!(items[1].name, "Abc");
+
+    Ok(())
+}
+
+#[test_log::test]
 fn reverse_country_rounds() -> Result<(), Box<dyn Error>> {
     let engine_data = get_engine_data(None, None, None, vec![])?;
     let engine = engine_data.as_engine()?;
