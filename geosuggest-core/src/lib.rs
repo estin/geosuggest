@@ -1,12 +1,12 @@
 #![doc = include_str!("../README.md")]
 use std::collections::HashMap;
 
-use itertools::Itertools;
-
 use kiddo::{self, SquaredEuclidean};
 
 use rayon::prelude::*;
+use rkyv::collections::swiss_table::ArchivedHashMap;
 use rkyv::rend::{f32_le, u32_le};
+use rkyv::string::ArchivedString;
 use strsim::jaro_winkler;
 
 #[cfg(feature = "geoip2")]
@@ -21,8 +21,36 @@ use oaph::schemars::{self, JsonSchema};
 pub mod index;
 pub mod storage;
 
+// FNV-1a hasher for small integer keys. The default SipHash costs more per
+// key than the few-nanosecond ranking work around it; ids come from our own
+// index, so a non-cryptographic hash is fine.
+#[derive(Debug)]
+struct FnvHasher(u64);
+
+impl Default for FnvHasher {
+    fn default() -> Self {
+        Self(0xcbf29ce484222325)
+    }
+}
+
+impl std::hash::Hasher for FnvHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        for b in bytes {
+            self.0 ^= *b as u64;
+            self.0 = self.0.wrapping_mul(0x100000001b3);
+        }
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+type FnvSet<T> = std::collections::HashSet<T, std::hash::BuildHasherDefault<FnvHasher>>;
+
 use index::{
-    ArchivedCitiesRecord, ArchivedCountryRecord, ArchivedEntry, ArchivedIndexData, IndexData,
+    ArchivedAdminDivision, ArchivedCitiesRecord, ArchivedCountry, ArchivedCountryRecord,
+    ArchivedIndexData, IndexData, NO_TABLE_INDEX,
 };
 
 #[cfg_attr(feature = "oaph", derive(JsonSchema))]
@@ -148,77 +176,117 @@ impl Engine<'_> {
         let min_score = min_score.unwrap_or(0.8);
         let normalized_pattern = pattern.to_lowercase();
 
-        let filter_by_pattern = |item: &ArchivedEntry| -> Option<(&ArchivedCitiesRecord, f32)> {
-            let score = if item.value.starts_with(&normalized_pattern) {
-                1.0
+        // Ranked candidate. Order: score desc (within EPSILON), then
+        // population desc, then id. The id tiebreak only makes exact ties
+        // deterministic; no order was ever promised between them.
+        #[derive(Clone, Copy)]
+        struct Cand {
+            score: f32,
+            pop: u32,
+            id: u32,
+        }
+        fn rank(a: &Cand, b: &Cand) -> std::cmp::Ordering {
+            if (a.score - b.score).abs() < f32::EPSILON {
+                b.pop
+                    .cmp(&a.pop)
+                    .then_with(|| a.id.cmp(&b.id))
+            } else if a.score > b.score {
+                std::cmp::Ordering::Greater
             } else {
-                jaro_winkler(&item.value, &normalized_pattern) as f32
-            };
-            if score >= min_score {
-                self.data.geonames.get(&item.id).map(|city| (city, score))
-            } else {
-                None
+                std::cmp::Ordering::Less
             }
-        };
+        }
 
-        let mut result: Vec<(&ArchivedCitiesRecord, f32)> = match &countries {
-            Some(countries) => {
-                let country_ids = countries
-                    .iter()
-                    .filter_map(|code| {
-                        self.data
-                            .country_info_by_code
-                            .get(code.as_ref())
-                            .map(|c| &c.info.geonameid)
-                    })
-                    .collect::<Vec<_>>();
-                self.data
-                    .entries
-                    .par_iter()
-                    .filter(|item| {
-                        item.country_id
-                            .as_ref()
-                            .map(|id| country_ids.contains(&id))
-                            .unwrap_or_default()
-                    })
-                    .filter_map(filter_by_pattern)
-                    .collect()
+        // Highest-ranked `limit` distinct ids, each with its best score.
+        // Matches the old collect-sort-unique-take result, except for the
+        // order between exact cross-city ties (which was unspecified).
+        fn select_top(mut cands: Vec<Cand>, limit: usize) -> Vec<Cand> {
+            // descending rank
+            cands.sort_unstable_by(|a, b| rank(b, a));
+            let mut seen = FnvSet::with_capacity_and_hasher(
+                limit.min(cands.len()),
+                Default::default(),
+            );
+            let mut out = Vec::with_capacity(limit.min(cands.len()));
+            for c in cands {
+                if out.len() == limit {
+                    break;
+                }
+                if seen.insert(c.id) {
+                    out.push(c);
+                }
             }
-            None => self
-                .data
-                .entries
-                .par_iter()
-                .filter_map(filter_by_pattern)
-                .collect(),
-        };
+            out
+        }
 
-        // sort by score desc, population desc
-        result.sort_unstable_by(|lhs, rhs| {
-            if (lhs.1 - rhs.1).abs() < f32::EPSILON {
-                rhs.0
-                    .population
-                    .partial_cmp(&lhs.0.population)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            } else {
-                rhs.1
-                    .partial_cmp(&lhs.1)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            }
+        let allowed: Option<Vec<u32>> = countries.map(|countries| {
+            countries
+                .iter()
+                .filter_map(|code| {
+                    self.data
+                        .country_info_by_code
+                        .get(code.as_ref())
+                        .map(|c| c.info.geonameid.to_native())
+                })
+                .collect::<Vec<_>>()
         });
 
-        result
-            .iter()
-            .unique_by(|item| item.0.id)
-            .take(limit)
-            .map(|item| item.0)
-            .collect::<Vec<_>>()
+        // Scan in chunks. Few matches stay in a plain vector, exactly like
+        // the old full collect; past 64K sightings the accumulator compacts
+        // to the top `limit` distinct ids. Either way memory stays far below
+        // the old unbounded collect, and a dropped id always re-enters
+        // through its later sightings with a higher score, so the surviving
+        // set is exact.
+        const CHUNK: usize = 65_536;
+        const COMPACT_AT: usize = 65_536;
+        let mut acc: Vec<Cand> = Vec::new();
+
+        // No compaction on the last chunk: the final selection sorts it once.
+        let chunks = self.data.entries.as_slice().chunks(CHUNK);
+        let last_chunk = chunks.len().saturating_sub(1);
+        for (n, chunk) in chunks.enumerate() {
+            let local: Vec<Cand> = chunk
+                .par_iter()
+                .filter(|item| match &allowed {
+                    Some(ids) => ids.contains(&item.country_id.to_native()),
+                    None => true,
+                })
+                .filter_map(|item| {
+                    let score = if item.value.starts_with(&normalized_pattern) {
+                        1.0
+                    } else {
+                        jaro_winkler(&item.value, &normalized_pattern) as f32
+                    };
+                    if score >= min_score {
+                        self.data.geonames.get(&item.id).map(|city| Cand {
+                            score,
+                            pop: city.population.to_native(),
+                            id: item.id.to_native(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            acc.extend(local);
+            if acc.len() >= COMPACT_AT && n < last_chunk {
+                acc = select_top(acc, limit);
+            }
+        }
+
+        select_top(acc, limit)
+            .into_iter()
+            .filter_map(|c| self.data.geonames.get(&u32_le::from_native(c.id)))
+            .collect()
     }
 
     /// Find the nearest cities by coordinates.
     ///
     /// Optional: score results by `k` as `distance - k * city.population` and sort by score.
     ///
-    /// Optional: prefilter by countries. It's a very expensive case; consider building an index for concrete countries and not applying this filter at all.
+    /// Optional: prefilter by countries. It fetches nearest in growing
+    /// rounds instead of the whole index at once; building an index for
+    /// concrete countries is still faster if the filter is always the same.
     pub fn reverse<T: AsRef<str>>(
         &self,
         loc: (f32, f32),
@@ -230,40 +298,87 @@ impl Engine<'_> {
             return None;
         }
 
-        let nearest_limit = std::num::NonZero::new(if countries.is_some() {
-            // ugly hack try to fetch nearest cities in requested countries
-            // much better is to build index for concrete countries
-            self.data.geonames.len()
-        } else {
-            limit
-        })?;
+        // resolve codes to shared-table indices once; comparing integers per
+        // candidate is cheaper than comparing strings
+        let allowed: Option<Vec<u32>> = countries.as_ref().map(|codes| {
+            codes
+                .iter()
+                .filter_map(|code| {
+                    self.data
+                        .countries
+                        .iter()
+                        .position(|c| c.code.as_str() == code.as_ref())
+                        .map(|pos| pos as u32)
+                })
+                .collect()
+        });
+
+        let total = self.data.geonames.len();
+        // without a filter the single query below behaves exactly like
+        // before; with a filter an empty index keeps returning None
+        let mut round = match &allowed {
+            Some(_) => {
+                if total == 0 {
+                    return None;
+                }
+                limit.min(total)
+            }
+            None => limit,
+        };
+
+        // With a country filter, fetch nearest in growing rounds instead of
+        // the whole index at once. Stopping at the first round that covers
+        // `limit` in-country cities sees the same candidates, so results are
+        // identical while per-request memory stays bounded.
+        let mut results = loop {
+            let nearest_limit = std::num::NonZero::new(round)?;
+            let mut results = self
+                .data
+                .tree
+                .query(&[loc.0, loc.1])
+                .nearest_n::<SquaredEuclidean<f32>>(nearest_limit)
+                .execute();
+            let enough = match &allowed {
+                Some(ids) => {
+                    results
+                        .iter_mut()
+                        .filter(|nearest| {
+                            self.data
+                                .tree_index_to_geonameid
+                                .get(nearest.item as usize)
+                                .and_then(|geonameid| self.data.geonames.get(geonameid))
+                                .map(|city| ids.contains(&city.country_idx.to_native()))
+                                .unwrap_or(false)
+                        })
+                        .count()
+                        >= limit
+                }
+                None => true,
+            };
+            if enough || round >= total {
+                break results;
+            }
+            round = round.saturating_mul(2).min(total);
+        };
 
         let mut i1;
         let mut i2;
 
-        let items = &mut self
-            .data
-            .tree
-            .query(&[loc.0, loc.1])
-            .nearest_n::<SquaredEuclidean<f32>>(nearest_limit)
-            .execute();
+        let items = &mut results;
 
         let items: &mut dyn Iterator<Item = (_, &ArchivedCitiesRecord)> =
-            if let Some(countries) = countries {
-                // normalize
-                let countries = countries
-                    .iter()
-                    .map(|code| code.as_ref())
-                    .collect::<Vec<_>>();
-
-                i1 = items.iter_mut().filter_map(move |nearest| {
+            if allowed.is_some() {
+                i1 = items.iter_mut().filter_map(|nearest| {
                     let geonameid = self
                         .data
                         .tree_index_to_geonameid
-                        .get(&u32_le::from(nearest.item))?;
+                        .get(nearest.item as usize)?;
                     let city = self.data.geonames.get(geonameid)?;
-                    let country = city.country.as_ref()?;
-                    if countries.contains(&country.code.as_str()) {
+                    if allowed
+                        .as_ref()
+                        .map(|ids| ids.contains(&city.country_idx.to_native()))
+                        .unwrap_or(false)
+                    {
                         Some((nearest, city))
                     } else {
                         None
@@ -275,7 +390,7 @@ impl Engine<'_> {
                     let geonameid = self
                         .data
                         .tree_index_to_geonameid
-                        .get(&u32_le::from(nearest.item))?;
+                        .get(nearest.item as usize)?;
                     let city = self.data.geonames.get(geonameid)?;
                     Some((nearest, city))
                 });
@@ -327,6 +442,76 @@ impl Engine<'_> {
         self.data.country_info_by_code.get(country_code)
     }
 
+    /// Country of a city via the shared countries table.
+    pub fn city_country(&self, city: &ArchivedCitiesRecord) -> Option<&ArchivedCountry> {
+        if city.country_idx.to_native() == NO_TABLE_INDEX {
+            None
+        } else {
+            self.data.countries.get(city.country_idx.to_native() as usize)
+        }
+    }
+
+    /// Admin1 division of a city via the shared divisions table.
+    pub fn city_admin1(&self, city: &ArchivedCitiesRecord) -> Option<&ArchivedAdminDivision> {
+        if city.admin1_idx.to_native() == NO_TABLE_INDEX {
+            None
+        } else {
+            self.data
+                .admin1_divisions
+                .get(city.admin1_idx.to_native() as usize)
+        }
+    }
+
+    /// Admin2 division of a city via the shared divisions table.
+    pub fn city_admin2(&self, city: &ArchivedCitiesRecord) -> Option<&ArchivedAdminDivision> {
+        if city.admin2_idx.to_native() == NO_TABLE_INDEX {
+            None
+        } else {
+            self.data
+                .admin2_divisions
+                .get(city.admin2_idx.to_native() as usize)
+        }
+    }
+
+    /// Timezone of a city via the shared timezones table.
+    pub fn city_timezone(&self, city: &ArchivedCitiesRecord) -> &str {
+        self.data
+            .timezones
+            .get(city.timezone_idx.to_native() as usize)
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    }
+
+    /// Country name translations by iso 2-letter country code.
+    ///
+    /// Shared table; replaces the former per-city copy.
+    pub fn country_names(
+        &self,
+        country_code: &str,
+    ) -> Option<&ArchivedHashMap<ArchivedString, ArchivedString>> {
+        self.data.country_info_by_code.get(country_code)?.names.as_ref()
+    }
+
+    /// Admin1 division name translations by division geonameid.
+    pub fn admin1_names(
+        &self,
+        division_id: u32,
+    ) -> Option<&ArchivedHashMap<ArchivedString, ArchivedString>> {
+        self.data
+            .admin1_names
+            .get(&u32_le::from_native(division_id))
+    }
+
+    /// Admin2 division name translations by division geonameid.
+    pub fn admin2_names(
+        &self,
+        division_id: u32,
+    ) -> Option<&ArchivedHashMap<ArchivedString, ArchivedString>> {
+        self.data
+            .admin2_names
+            .get(&u32_le::from_native(division_id))
+    }
+
     #[cfg(feature = "geoip2")]
     pub fn geoip2_lookup(&self, addr: IpAddr) -> Option<&ArchivedCitiesRecord> {
         match self.geoip2.as_ref() {
@@ -348,11 +533,14 @@ impl Engine<'_> {
 impl TryFrom<IndexData> for EngineData {
     type Error = rkyv::rancor::Error;
     fn try_from(data: IndexData) -> Result<EngineData, Self::Error> {
+        let mut bytes = rkyv::api::high::to_bytes_in::<_, rkyv::rancor::Error>(
+            &data,
+            rkyv::util::AlignedVec::<128>::new(),
+        )?;
+        // the serializer grows by doubling; drop the slack before long-term storage
+        bytes.shrink_to_fit();
         Ok(EngineData {
-            data: rkyv::api::high::to_bytes_in::<_, rkyv::rancor::Error>(
-                &data,
-                rkyv::util::AlignedVec::<128>::new(),
-            )?,
+            data: bytes,
             metadata: None,
             #[cfg(feature = "geoip2")]
             geoip2: None,

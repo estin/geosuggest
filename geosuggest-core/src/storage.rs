@@ -54,8 +54,16 @@ impl Storage {
         let metadata_len = u32::from_be_bytes(metadata_len);
         let _ = buf.seek(SeekFrom::Current(metadata_len as i64))?;
 
+        // reserve the exact payload size so the buffer never rounds up to a
+        // power of two while reading a large index
+        let payload_start = buf.stream_position()?;
+        let payload_len = buf.seek(SeekFrom::End(0))?.saturating_sub(payload_start);
+        buf.seek(SeekFrom::Start(payload_start))?;
+
         let mut bytes = rkyv::util::AlignedVec::<128>::new();
+        bytes.reserve_exact(payload_len as usize);
         bytes.extend_from_reader(buf)?;
+        bytes.shrink_to_fit();
 
         Ok(bytes.try_into()?)
     }

@@ -204,19 +204,24 @@ pub struct GeoIP2Result<'a> {
 }
 
 impl<'a> CityResultItem<'a> {
-    pub fn from_city(item: &'a ArchivedCitiesRecord, lang: Option<&'a str>) -> Self {
+    pub fn from_city(
+        engine: &'a Engine<'a>,
+        item: &'a ArchivedCitiesRecord,
+        lang: Option<&'a str>,
+    ) -> Self {
         let name = match (lang, item.names.as_ref()) {
             (Some(lang), Some(names)) => names.get(lang).unwrap_or(&item.name),
             _ => &item.name,
         };
 
-        let country = if let Some(country) = item.country.as_ref() {
-            let country_name = match (lang, item.country_names.as_ref()) {
-                (Some(lang), Some(names)) => names
-                    .get(lang)
+        let country = if let Some(country) = engine.city_country(item) {
+            let country_name = match lang {
+                Some(lang) => engine
+                    .country_names(&country.code)
+                    .and_then(|names| names.get(lang))
                     .map(|v| v.as_str())
                     .unwrap_or(country.name.as_str()),
-                _ => &country.name,
+                None => &country.name,
             };
             Some(CountryItem {
                 id: country.id.to_native(),
@@ -227,10 +232,13 @@ impl<'a> CityResultItem<'a> {
             None
         };
 
-        let admin_division = if let Some(admin1) = item.admin_division.as_ref() {
-            let admin1_name = match (lang, item.admin1_names.as_ref()) {
-                (Some(lang), Some(names)) => names.get(lang).unwrap_or(&admin1.name),
-                _ => &admin1.name,
+        let admin_division = if let Some(admin1) = engine.city_admin1(item) {
+            let admin1_name = match lang {
+                Some(lang) => engine
+                    .admin1_names(admin1.id.to_native())
+                    .and_then(|names| names.get(lang))
+                    .unwrap_or(&admin1.name),
+                None => &admin1.name,
             };
             Some(AdminDivisionItem {
                 id: admin1.id.to_native(),
@@ -241,10 +249,13 @@ impl<'a> CityResultItem<'a> {
             None
         };
 
-        let admin2_division = if let Some(admin2) = item.admin2_division.as_ref() {
-            let admin2_name = match (lang, item.admin2_names.as_ref()) {
-                (Some(lang), Some(names)) => names.get(lang).unwrap_or(&admin2.name),
-                _ => &admin2.name,
+        let admin2_division = if let Some(admin2) = engine.city_admin2(item) {
+            let admin2_name = match lang {
+                Some(lang) => engine
+                    .admin2_names(admin2.id.to_native())
+                    .and_then(|names| names.get(lang))
+                    .unwrap_or(&admin2.name),
+                None => &admin2.name,
             };
             Some(AdminDivisionItem {
                 id: admin2.id.to_native(),
@@ -261,7 +272,7 @@ impl<'a> CityResultItem<'a> {
             country,
             admin_division,
             admin2_division,
-            timezone: &item.timezone,
+            timezone: engine.city_timezone(item),
             latitude: item.latitude.to_native(),
             longitude: item.longitude.to_native(),
             population: item.population.to_native(),
@@ -278,7 +289,7 @@ pub async fn city_get(
 
     let city = engine
         .get(&query.id)
-        .map(|city| CityResultItem::from_city(city, query.lang.as_deref()));
+        .map(|city| CityResultItem::from_city(&engine,city, query.lang.as_deref()));
 
     HttpResponse::Ok().json(&GetCityResult {
         time: now.elapsed().as_millis() as usize,
@@ -319,7 +330,7 @@ fn get_country_code<'a>(
         GetCapitalLookup::Coords { lat, lng } => engine
             .reverse::<&str>((lat, lng), 1, None, None)
             .and_then(|items| items.into_iter().next())
-            .and_then(|item| item.city.country.as_ref())
+            .and_then(|item| engine.city_country(item.city))
             .map(|country| country.code.as_str()),
         #[cfg(feature = "geoip2")]
         GetCapitalLookup::Ip(ip) => {
@@ -327,7 +338,7 @@ fn get_country_code<'a>(
 
             engine
                 .geoip2_lookup(addr)
-                .and_then(|city| city.country.as_ref())
+                .and_then(|city| engine.city_country(city))
                 .map(|country| country.code.as_str())
         }
         GetCapitalLookup::CountryCode(country_code) => Some(country_code),
@@ -359,7 +370,7 @@ pub async fn capital(
 
         return HttpResponse::Ok().json(&GetCapitalResult {
             time: now.elapsed().as_millis() as usize,
-            city: Some(CityResultItem::from_city(city, query.lang.as_deref())),
+            city: Some(CityResultItem::from_city(&engine,city, query.lang.as_deref())),
         });
     }
 
@@ -388,7 +399,7 @@ pub async fn suggest(
             get_countries_filter(&query.countries).as_deref(),
         )
         .iter()
-        .map(|item| CityResultItem::from_city(item, query.lang.as_deref()))
+        .map(|item| CityResultItem::from_city(&engine,item, query.lang.as_deref()))
         .collect::<Vec<CityResultItem>>();
 
     HttpResponse::Ok().json(&SuggestResult {
@@ -419,7 +430,7 @@ pub async fn reverse(
             .iter()
             .take(query.limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT))
             .map(|item| ReverseResultItem {
-                city: CityResultItem::from_city(item.city, query.lang.as_deref()),
+                city: CityResultItem::from_city(&engine,item.city, query.lang.as_deref()),
                 distance: item.distance,
                 score: item.score,
             })
@@ -445,7 +456,7 @@ pub async fn geoip2(
     HttpResponse::Ok().json(&GeoIP2Result {
         time: now.elapsed().as_millis() as usize,
         for_ip: addr.to_string(),
-        city: result.map(|item| CityResultItem::from_city(item, query.lang.as_deref())),
+        city: result.map(|item| CityResultItem::from_city(&engine,item, query.lang.as_deref())),
     })
 }
 
