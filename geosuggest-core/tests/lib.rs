@@ -277,6 +277,38 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
 }
 
 #[test_log::test]
+fn load_legacy_format() -> Result<(), Box<dyn Error>> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+
+    // legacy layout written without `tracing`: length prefix + payload,
+    // with the metadata bytes missing
+    let filepath = temp_dir().join("test-engine-legacy.rkyv");
+    {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&filepath)?;
+        let metadata = rkyv::to_bytes::<rkyv::rancor::Error>(&engine_data.metadata)?;
+        file.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        file.write_all(&engine_data.data)?;
+    }
+
+    let loaded = storage::Storage::new().load_from(&filepath)?;
+    assert_eq!(loaded.data.len(), engine_data.data.len());
+
+    let engine = loaded.as_engine()?;
+    let items = engine.suggest::<&str>("voronezh", 1, None, None);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "Voronezh");
+
+    Ok(())
+}
+
+#[test_log::test]
 fn population_weight() -> Result<(), Box<dyn Error>> {
     let engine_data =
         get_engine_data(Some("tests/misc/population-weight.txt"), None, None, vec![])?;

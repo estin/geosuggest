@@ -292,16 +292,20 @@ pub struct CitiesRecord {
     pub latitude: f32,
     #[rkyv(attr(serde(serialize_with = "serialize_archived_f32")))]
     pub longitude: f32,
-    /// index into `IndexData::countries`, `NO_TABLE_INDEX` when unknown
+    /// index into `IndexData::countries`, `NO_TABLE_INDEX` when unknown.
+    /// Resolve it with `Engine::city_country`.
     #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
     pub country_idx: u32,
-    /// index into `IndexData::admin1_divisions`, `NO_TABLE_INDEX` when unknown
+    /// index into `IndexData::admin1_divisions`, `NO_TABLE_INDEX` when unknown.
+    /// Resolve it with `Engine::city_admin1`.
     #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
     pub admin1_idx: u32,
-    /// index into `IndexData::admin2_divisions`, `NO_TABLE_INDEX` when unknown
+    /// index into `IndexData::admin2_divisions`, `NO_TABLE_INDEX` when unknown.
+    /// Resolve it with `Engine::city_admin2`.
     #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
     pub admin2_idx: u32,
-    /// index into `IndexData::timezones`
+    /// index into `IndexData::timezones`.
+    /// Resolve it with `Engine::city_timezone`.
     #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
     pub timezone_idx: u32,
     #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]

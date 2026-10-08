@@ -21,33 +21,6 @@ use oaph::schemars::{self, JsonSchema};
 pub mod index;
 pub mod storage;
 
-// FNV-1a hasher for small integer keys. The default SipHash costs more per
-// key than the few-nanosecond ranking work around it; ids come from our own
-// index, so a non-cryptographic hash is fine.
-#[derive(Debug)]
-struct FnvHasher(u64);
-
-impl Default for FnvHasher {
-    fn default() -> Self {
-        Self(0xcbf29ce484222325)
-    }
-}
-
-impl std::hash::Hasher for FnvHasher {
-    fn write(&mut self, bytes: &[u8]) {
-        for b in bytes {
-            self.0 ^= *b as u64;
-            self.0 = self.0.wrapping_mul(0x100000001b3);
-        }
-    }
-
-    fn finish(&self) -> u64 {
-        self.0
-    }
-}
-
-type FnvSet<T> = std::collections::HashSet<T, std::hash::BuildHasherDefault<FnvHasher>>;
-
 use index::{
     ArchivedAdminDivision, ArchivedCitiesRecord, ArchivedCountry, ArchivedCountryRecord,
     ArchivedIndexData, IndexData, NO_TABLE_INDEX,
@@ -203,16 +176,16 @@ impl Engine<'_> {
         fn select_top(mut cands: Vec<Cand>, limit: usize) -> Vec<Cand> {
             // descending rank
             cands.sort_unstable_by(|a, b| rank(b, a));
-            let mut seen = FnvSet::with_capacity_and_hasher(
-                limit.min(cands.len()),
-                Default::default(),
-            );
+            // linear dedup: `limit` is tiny (10 by default), so a scan
+            // beats hashing here and needs no custom hasher
+            let mut seen: Vec<u32> = Vec::new();
             let mut out = Vec::with_capacity(limit.min(cands.len()));
             for c in cands {
                 if out.len() == limit {
                     break;
                 }
-                if seen.insert(c.id) {
+                if !seen.contains(&c.id) {
+                    seen.push(c.id);
                     out.push(c);
                 }
             }

@@ -51,20 +51,33 @@ impl Storage {
         // skip metadata
         let mut metadata_len = [0; 4];
         buf.read_exact(&mut metadata_len)?;
-        let metadata_len = u32::from_be_bytes(metadata_len);
-        let _ = buf.seek(SeekFrom::Current(metadata_len as i64))?;
+        let metadata_len = u32::from_be_bytes(metadata_len) as u64;
+        let end = buf.seek(SeekFrom::End(0))?;
 
-        // reserve the exact payload size so the buffer never rounds up to a
-        // power of two while reading a large index
-        let payload_start = buf.stream_position()?;
-        let payload_len = buf.seek(SeekFrom::End(0))?.saturating_sub(payload_start);
-        buf.seek(SeekFrom::Start(payload_start))?;
+        // Current layout: payload follows the metadata. Layouts written
+        // without `tracing` stored the length prefix but not the metadata
+        // itself, so fall back to that offset when the new one holds no
+        // valid archive.
+        let new_start = 4u64.saturating_add(metadata_len);
+        if new_start <= end {
+            buf.seek(SeekFrom::Start(new_start))?;
+            let mut bytes = rkyv::util::AlignedVec::<128>::new();
+            bytes.reserve_exact((end - new_start) as usize);
+            bytes.extend_from_reader(buf)?;
+            bytes.shrink_to_fit();
+            if rkyv::access::<crate::index::ArchivedIndexData, rkyv::rancor::Error>(&bytes)
+                .is_ok()
+            {
+                return Ok(bytes.try_into()?);
+            }
+        }
 
+        buf.seek(SeekFrom::Start(4))?;
         let mut bytes = rkyv::util::AlignedVec::<128>::new();
-        bytes.reserve_exact(payload_len as usize);
+        bytes.reserve_exact(end.saturating_sub(4) as usize);
         bytes.extend_from_reader(buf)?;
         bytes.shrink_to_fit();
-
+        rkyv::access::<crate::index::ArchivedIndexData, rkyv::rancor::Error>(&bytes)?;
         Ok(bytes.try_into()?)
     }
 
