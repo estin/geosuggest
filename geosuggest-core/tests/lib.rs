@@ -305,14 +305,15 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
 }
 
 #[test_log::test]
-fn load_legacy_format() -> Result<(), Box<dyn Error>> {
+fn load_rejects_legacy_framing() -> Result<(), Box<dyn Error>> {
     use std::fs::OpenOptions;
     use std::io::Write;
 
     let engine_data = get_engine_data(None, None, None, vec![])?;
 
-    // legacy layout written without `tracing`: length prefix + payload,
-    // with the metadata bytes missing
+    // legacy framing written without `tracing`: length prefix + payload,
+    // with the metadata bytes missing. It must fail with a rebuild request,
+    // not a misread.
     let filepath = temp_dir().join("test-engine-legacy.rkyv");
     {
         let mut file = OpenOptions::new()
@@ -325,13 +326,60 @@ fn load_legacy_format() -> Result<(), Box<dyn Error>> {
         file.write_all(&engine_data.data)?;
     }
 
-    let loaded = storage::Storage::new().load_from(&filepath)?;
-    assert_eq!(loaded.data.len(), engine_data.data.len());
+    let err = match storage::Storage::new().load_from(&filepath) {
+        Ok(_) => panic!("legacy framing must be rejected"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("rebuild"),
+        "unexpected error: {err}"
+    );
 
+    Ok(())
+}
+
+#[test_log::test]
+fn load_rejects_wrong_version() -> Result<(), Box<dyn Error>> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+
+    // current framing, but stamped with a foreign layout version
+    let filepath = temp_dir().join("test-engine-wrong-version.rkyv");
+    {
+        let mut stale = geosuggest_core::EngineMetadata::default();
+        stale.index_format_version = u32::MAX;
+        let metadata = rkyv::to_bytes::<rkyv::rancor::Error>(&Some(stale))?;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&filepath)?;
+        file.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        file.write_all(&metadata)?;
+        file.write_all(&engine_data.data)?;
+    }
+
+    let err = match storage::Storage::new().load_from(&filepath) {
+        Ok(_) => panic!("wrong version must be rejected"),
+        Err(err) => err,
+    };
+    let message = err.to_string();
+    assert!(message.contains("rebuild"), "unexpected error: {message}");
+    assert!(
+        message.contains(&u32::MAX.to_string()),
+        "unexpected error: {message}"
+    );
+
+    // the dumped file carries the current version and loads fine
+    let current = temp_dir().join("test-engine-versioned.rkyv");
+    storage::Storage::new().dump_to(&current, &engine_data)?;
+    let loaded = storage::Storage::new().load_from(&current)?;
+    assert_eq!(loaded.data.len(), engine_data.data.len());
     let engine = loaded.as_engine()?;
-    let items = engine.suggest::<&str>("voronezh", 1, None, None);
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].name, "Voronezh");
+    assert_eq!(engine.suggest::<&str>("voronezh", 1, None, None).len(), 1);
 
     Ok(())
 }

@@ -71,6 +71,11 @@ impl<'a> IndexUpdater<'a> {
     }
 
     pub async fn has_updates(&self, metadata: &EngineMetadata) -> Result<bool> {
+        if metadata.index_format_version != geosuggest_core::index::INDEX_FORMAT_VERSION {
+            #[cfg(feature = "tracing")]
+            tracing::info!("Index format version changed, rebuild required");
+            return Ok(true);
+        }
         #[cfg(feature = "tracing")]
         tracing::info!("Check updates");
         if metadata.source.etag.is_empty() {

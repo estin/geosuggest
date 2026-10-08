@@ -65,6 +65,9 @@ pub struct EngineMetadata {
     pub source: EngineSourceMetadata,
     /// Custom metadata info
     pub extra: HashMap<String, String>,
+    /// Archived index layout version (`index::INDEX_FORMAT_VERSION`);
+    /// `Storage::load` rejects anything else
+    pub index_format_version: u32,
 }
 
 impl Default for EngineMetadata {
@@ -74,6 +77,7 @@ impl Default for EngineMetadata {
             geosuggest_version: env!("CARGO_PKG_VERSION").to_owned(),
             source: EngineSourceMetadata::default(),
             extra: HashMap::default(),
+            index_format_version: index::INDEX_FORMAT_VERSION,
         }
     }
 }

@@ -38,6 +38,10 @@ pub const DEFAULT_EXCLUDED_FEATURE_CODES: &[&str] = &[
     "PPLA3", "PPLA4", "PPLA5", "PPLF", "PPLL", "PPLQ", "PPLW", "PPLX", "STLMT",
 ];
 
+/// Archived index layout version. Bump it whenever an archived type changes;
+/// `Storage::load` rejects anything else with a rebuild request.
+pub const INDEX_FORMAT_VERSION: u32 = 1;
+
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
     pub names: Option<P>,
