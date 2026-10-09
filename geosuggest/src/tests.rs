@@ -2,12 +2,15 @@ use geosuggest_core::{
     index::{IndexData, SourceFileOptions},
     EngineData,
 };
-use ntex::web::{test, App, Error, ServiceConfig};
+use ntex::web::{test, App, ServiceConfig};
 use ntex::{http, web};
 
+type Error = Box<dyn std::error::Error>;
+
+use super::AppState;
 use std::sync::Arc;
 
-fn app_config(cfg: &mut ServiceConfig) {
+fn build_test_state() -> AppState {
     let data = IndexData::new_from_files(SourceFileOptions {
         cities: "../geosuggest-core/tests/misc/cities.txt",
         names: Some("../geosuggest-core/tests/misc/names.txt"),
@@ -36,19 +39,29 @@ fn app_config(cfg: &mut ServiceConfig) {
     let static_engine = Box::leak(engine);
     let shared_engine = Arc::new(static_engine);
 
-    cfg.state(shared_engine).service((
-        web::resource("/get").to(super::city_get),
-        web::resource("/capital").to(super::capital),
-        web::resource("/suggest").to(super::suggest),
-        web::resource("/reverse").to(super::reverse),
+    AppState::new(shared_engine)
+}
+
+fn app_config(cfg: &mut ServiceConfig<AppState, ()>) {
+    cfg.service((
+        web::resource("/get").to_with_state(super::city_get),
+        web::resource("/capital").to_with_state(super::capital),
+        web::resource("/suggest").to_with_state(super::suggest),
+        web::resource("/reverse").to_with_state(super::reverse),
         #[cfg(feature = "geoip2")]
-        web::resource("/geoip2").to(super::geoip2),
+        web::resource("/geoip2").to_with_state(super::geoip2),
     ));
+}
+
+macro_rules! test_app {
+    () => {
+        test::init_service_st(build_test_state(), App::new().configure(app_config)).await
+    };
 }
 
 #[test_log::test(ntex::test)]
 async fn api_get() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get().uri("/get?id=472045").to_request();
     let resp = app.call(req).await.unwrap();
@@ -68,7 +81,7 @@ async fn api_get() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_capital_country_code() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/capital?country_code=RU")
@@ -90,7 +103,7 @@ async fn api_capital_country_code() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_capital_coordinates() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/capital?lat=55.7558&lng=37.6173&country_code=GB")
@@ -110,7 +123,7 @@ async fn api_capital_coordinates() -> Result<(), Error> {
 #[cfg(feature = "geoip2")]
 #[test_log::test(ntex::test)]
 async fn api_capital_ip() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/capital?ip=81.2.69.142&country_code=RU")
@@ -130,7 +143,7 @@ async fn api_capital_ip() -> Result<(), Error> {
 #[cfg(feature = "geoip2")]
 #[test_log::test(ntex::test)]
 async fn api_capital_ip_client() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/capital?ip=client&country_code=RU")
@@ -150,7 +163,7 @@ async fn api_capital_ip_client() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_get_lang() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/get?id=472045&lang=ru")
@@ -195,7 +208,7 @@ async fn api_get_lang() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_suggest() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/suggest?pattern=Voronezh&countries=RU,JP")
@@ -216,7 +229,7 @@ async fn api_suggest() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_suggest_lang() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/suggest?pattern=Voronezh&lang=ru&limit=1")
@@ -261,7 +274,7 @@ async fn api_suggest_lang() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_reverse() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/reverse?lat=51.6372&lng=39.1937&limit=1&countries=RU,JP")
@@ -293,7 +306,7 @@ async fn api_reverse() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_reverse_lang() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/reverse?lat=51.6372&lng=39.1937&lang=ru&limit=1")
@@ -358,7 +371,7 @@ async fn api_reverse_lang() -> Result<(), Error> {
 #[cfg(feature = "geoip2")]
 #[test_log::test(ntex::test)]
 async fn api_geoip2_lang() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/geoip2?ip=81.2.69.142&lang=ru")
@@ -378,7 +391,7 @@ async fn api_geoip2_lang() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_suggest_admin2_lang() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/suggest?pattern=Beverley&lang=ru&limit=1")
@@ -411,7 +424,7 @@ async fn api_suggest_admin2_lang() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_reverse_admin2_lang() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/reverse?lat=53.84587&lng=-0.42332&lang=ru&limit=1")
@@ -459,7 +472,7 @@ async fn api_reverse_admin2_lang() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_suggest_filter_by_countries() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/suggest?pattern=Voronezh&countries=JP,KR")
@@ -479,7 +492,7 @@ async fn api_suggest_filter_by_countries() -> Result<(), Error> {
 
 #[test_log::test(ntex::test)]
 async fn api_reverse_filter_by_countries() -> Result<(), Error> {
-    let app = test::init_service(App::new().configure(app_config)).await;
+    let app = test_app!();
 
     let req = test::TestRequest::get()
         .uri("/reverse?lat=51.6372&lng=39.1937&limit=1&countries=JP,KR")

@@ -40,6 +40,24 @@ impl std::ops::Deref for StaticEngine {
 
 pub type SharedEngine = Arc<&'static mut Engine<'static>>;
 
+/// Application state for ntex handlers. ntex requires stateful handlers to
+/// take `(&AppState, _request_state: (), ...extractors)`: the middle argument
+/// is the unused per-request state that `HandlerSt` always passes.
+pub type AppState = web::AppState<SharedEngine>;
+
+#[derive(Clone)]
+struct AppConfig {
+    engine: SharedEngine,
+}
+
+impl ntex::server::ServerAppConfig for AppConfig {
+    type State = AppState;
+
+    async fn create(&self) -> std::io::Result<AppState> {
+        Ok(web::AppState::new(self.engine.clone()))
+    }
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetCityQuery {
     /// geonameid of the City
@@ -281,7 +299,8 @@ impl<'a> CityResultItem<'a> {
 }
 
 pub async fn city_get(
-    engine: web::types::State<SharedEngine>,
+    engine: &AppState,
+    _request_state: (),
     web::types::Query(query): web::types::Query<GetCityQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -289,7 +308,7 @@ pub async fn city_get(
 
     let city = engine
         .get(&query.id)
-        .map(|city| CityResultItem::from_city(&engine,city, query.lang.as_deref()));
+        .map(|city| CityResultItem::from_city(engine, city, query.lang.as_deref()));
 
     HttpResponse::Ok().json(&GetCityResult {
         time: now.elapsed().as_millis() as usize,
@@ -346,7 +365,8 @@ fn get_country_code<'a>(
 }
 
 pub async fn capital(
-    engine: web::types::State<SharedEngine>,
+    engine: &AppState,
+    _request_state: (),
     web::types::Query(query): web::types::Query<GetCapitalQuery>,
     req: HttpRequest,
 ) -> HttpResponse {
@@ -355,7 +375,7 @@ pub async fn capital(
     let mut err = None;
 
     for lookup in query.lookups() {
-        let country_code = match get_country_code(&engine, lookup, &req) {
+        let country_code = match get_country_code(engine, lookup, &req) {
             Ok(Some(country_code)) => country_code,
             Ok(None) => continue,
             Err(e) => {
@@ -370,7 +390,11 @@ pub async fn capital(
 
         return HttpResponse::Ok().json(&GetCapitalResult {
             time: now.elapsed().as_millis() as usize,
-            city: Some(CityResultItem::from_city(&engine,city, query.lang.as_deref())),
+            city: Some(CityResultItem::from_city(
+                engine,
+                city,
+                query.lang.as_deref(),
+            )),
         });
     }
 
@@ -385,7 +409,8 @@ pub async fn capital(
 }
 
 pub async fn suggest(
-    engine: web::types::State<SharedEngine>,
+    engine: &AppState,
+    _request_state: (),
     web::types::Query(query): web::types::Query<SuggestQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -399,7 +424,7 @@ pub async fn suggest(
             get_countries_filter(&query.countries).as_deref(),
         )
         .iter()
-        .map(|item| CityResultItem::from_city(&engine,item, query.lang.as_deref()))
+        .map(|item| CityResultItem::from_city(engine, item, query.lang.as_deref()))
         .collect::<Vec<CityResultItem>>();
 
     HttpResponse::Ok().json(&SuggestResult {
@@ -409,7 +434,8 @@ pub async fn suggest(
 }
 
 pub async fn reverse(
-    engine: web::types::State<SharedEngine>,
+    engine: &AppState,
+    _request_state: (),
     web::types::Query(query): web::types::Query<ReverseQuery>,
     _req: HttpRequest,
 ) -> HttpResponse {
@@ -430,7 +456,7 @@ pub async fn reverse(
             .iter()
             .take(query.limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT))
             .map(|item| ReverseResultItem {
-                city: CityResultItem::from_city(&engine,item.city, query.lang.as_deref()),
+                city: CityResultItem::from_city(engine, item.city, query.lang.as_deref()),
                 distance: item.distance,
                 score: item.score,
             })
@@ -440,7 +466,8 @@ pub async fn reverse(
 
 #[cfg(feature = "geoip2")]
 pub async fn geoip2(
-    engine: web::types::State<SharedEngine>,
+    engine: &AppState,
+    _request_state: (),
     web::types::Query(query): web::types::Query<GeoIP2Query>,
     req: HttpRequest,
 ) -> HttpResponse {
@@ -456,7 +483,7 @@ pub async fn geoip2(
     HttpResponse::Ok().json(&GeoIP2Result {
         time: now.elapsed().as_millis() as usize,
         for_ip: addr.to_string(),
-        city: result.map(|item| CityResultItem::from_city(&engine,item, query.lang.as_deref())),
+        city: result.map(|item| CityResultItem::from_city(engine, item, query.lang.as_deref())),
     })
 }
 
@@ -565,40 +592,46 @@ async fn main() -> std::io::Result<()> {
     #[cfg(feature = "tracing")]
     tracing::info!("Listen on {}", listen_on);
 
-    web::server(async move || {
-        let shared_engine = shared_engine_clone.clone();
-        let settings = settings_clone.clone();
+    web::server_with_config(
+        AppConfig {
+            engine: shared_engine_clone.clone(),
+        },
+        async move |_: &AppState| {
+            let settings = settings_clone.clone();
 
-        App::new()
-            .state(shared_engine)
-            // enable logger
-            .middleware(middleware::Logger::default())
-            .middleware(Cors::default())
-            .service(
-                web::scope(&settings.url_path_prefix)
-                    .service((
-                        // api
-                        web::resource("/api/city/get").to(city_get),
-                        web::resource("/api/city/capital").to(capital),
-                        web::resource("/api/city/suggest").to(suggest),
-                        web::resource("/api/city/reverse").to(reverse),
-                        #[cfg(feature = "geoip2")]
-                        web::resource("/api/city/geoip2").to(geoip2),
-                        // serve openapi3 yaml and ui from files
-                        fs::Files::new("/openapi3.yaml", std::env::temp_dir())
-                            .index_file("openapi3.yaml"),
-                        fs::Files::new("/swagger", std::env::temp_dir())
-                            .index_file("swagger-ui.html"),
-                        fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
-                    ))
-                    .configure(move |cfg: &mut web::ServiceConfig| {
-                        if let Some(static_dir) = settings.static_dir.as_ref() {
-                            cfg.service(fs::Files::new("/", static_dir).index_file("index.html"));
-                        }
-                    }),
-            )
-    })
-    .bind(listen_on)?
+            App::<AppState>::new()
+                // enable logger
+                .middleware(middleware::Logger::default())
+                .middleware(Cors::default())
+                .service(
+                    web::scope(&settings.url_path_prefix)
+                        .configure(move |cfg: &mut web::ServiceConfig<AppState, _>| {
+                            if let Some(static_dir) = settings.static_dir.as_ref() {
+                                cfg.service(
+                                    fs::Files::new("/", static_dir).index_file("index.html"),
+                                );
+                            }
+                        })
+                        .service((
+                            // api
+                            web::resource("/api/city/get").to_with_state(city_get),
+                            web::resource("/api/city/capital").to_with_state(capital),
+                            web::resource("/api/city/suggest").to_with_state(suggest),
+                            web::resource("/api/city/reverse").to_with_state(reverse),
+                            #[cfg(feature = "geoip2")]
+                            web::resource("/api/city/geoip2").to_with_state(geoip2),
+                            // serve openapi3 yaml and ui from files
+                            fs::Files::new("/openapi3.yaml", std::env::temp_dir())
+                                .index_file("openapi3.yaml"),
+                            fs::Files::new("/swagger", std::env::temp_dir())
+                                .index_file("swagger-ui.html"),
+                            fs::Files::new("/redoc", std::env::temp_dir())
+                                .index_file("redoc-ui.html"),
+                        )),
+                )
+        },
+    )
+    .bind(listen_on, ntex::SharedCfg::default())?
     .run()
     .await
 }

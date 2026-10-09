@@ -20,7 +20,7 @@ path = "src/main.rs"
 [features]
 default = ["tokio", "geoip2", "tracing"]
 geoip2 = ["geosuggest-core/geoip2"]
-neon = ["ntex/neon"]
+neon = ["ntex/neon-polling"]
 tokio = ["ntex/tokio"]
 tracing = ["dep:tracing", "dep:tracing-subscriber", "geosuggest-core/tracing", "bonfig/tracing"]
 
