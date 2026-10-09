@@ -7,13 +7,13 @@ This file records migrations between versions that break files or code. Each sec
 | Code version | Index format version | Note |
 |---|---|---|
 | 0.8.5 and before | No version field | Last code that reads old index files |
-| memory-usage branch | 1 | First code that stamps and checks the format version |
+| RELEASE_VERSION | 1 | First code that stamps and checks the format version |
 
 The index format version lives in `geosuggest_core::index::INDEX_FORMAT_VERSION`. Storage dump stamps every index with the current value. Storage load rejects files with a different value. The crate version and the index format version move separately. The table above maps them so you can tell which files load where.
 
-## Migrate from 0.8.5 to the memory-usage branch
+## Migrate from 0.8.5 to the RELEASE_VERSION
 
-The memory-usage branch changes the index format and the public API. Old index files do not load. Some Rust types changed shape.
+The RELEASE_VERSION changes the index format and the public API. Old index files do not load. Some Rust types changed shape.
 
 The migration has three parts: rebuild the index, update code that touches the changed types, and check result order in tests.
 
@@ -29,7 +29,7 @@ index format version 0 is not supported (code expects 1); rebuild the index and 
 
 #### 1.1 Rebuild steps
 
-1. Update the code to the memory-usage branch.
+1. Update the code to the RELEASE_VERSION.
 2. Delete the old index file. The default file path depends on your configuration.
 3. Build a new index from the source files with `IndexUpdater` or the `geosuggest-build-index` tool.
 4. If the program starts with a cached index file, restart it after step 3.
