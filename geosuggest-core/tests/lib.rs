@@ -1,5 +1,5 @@
 use geosuggest_core::{
-    index::{IndexData, SourceFileOptions},
+    index::{ArchivedCitiesRecord, IndexData, SourceFileOptions},
     storage, EngineData, EngineMetadata,
 };
 use std::{env::temp_dir, error::Error};
@@ -53,14 +53,14 @@ fn suggest() -> Result<(), Box<dyn Error>> {
     let items = engine.suggest::<&str>("voronezh", 1, None, None);
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].name, "Voronezh");
-    assert_eq!(items[0].country.as_ref().unwrap().name, "Russia");
-    assert_eq!(items[0].admin_division.as_ref().unwrap().name, "Voronezj");
+    assert_eq!(engine.city_country(items[0]).unwrap().name, "Russia");
+    assert_eq!(engine.city_admin1(items[0]).unwrap().name, "Voronezj");
 
     let items = engine.suggest::<&str>("Beverley", 1, None, None);
     tracing::info!("Items {items:#?}");
     assert_eq!(items[0].name, "Beverley");
     assert_eq!(
-        items[0].admin2_division.as_ref().unwrap().name,
+        engine.city_admin2(items[0]).unwrap().name,
         "East Riding of Yorkshire"
     );
 
@@ -69,6 +69,113 @@ fn suggest() -> Result<(), Box<dyn Error>> {
 
     let items = engine.suggest("Beverley", 1, None, Some(&["GB"]));
     assert_eq!(items.len(), 1);
+
+    Ok(())
+}
+
+#[test_log::test]
+fn suggest_topk_invariants() -> Result<(), Box<dyn Error>> {
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+    let engine = engine_data.as_engine()?;
+
+    fn ids(items: &[&ArchivedCitiesRecord]) -> Vec<u32> {
+        items.iter().map(|c| c.id.to_native()).collect()
+    }
+
+    for pattern in ["voronezh", "Beverley", "o", "e", "mos", "zzz-no-match", ""] {
+        for min_score in [None, Some(0.5), Some(0.99)] {
+            let full = ids(&engine.suggest::<&str>(pattern, 50, min_score, None));
+            for limit in [1usize, 2, 3, 5] {
+                let part = ids(&engine.suggest::<&str>(pattern, limit, min_score, None));
+                // bounded: never more than asked
+                assert!(part.len() <= limit, "{pattern} {limit}");
+                // exact: top-K is a prefix of top-50
+                assert_eq!(&full[..part.len()], &part[..], "{pattern} {limit}");
+                // distinct cities
+                let mut seen = std::collections::HashSet::new();
+                assert!(part.iter().all(|id| seen.insert(id)), "{pattern} {limit}");
+                // deterministic across runs
+                let again = ids(&engine.suggest::<&str>(pattern, limit, min_score, None));
+                assert_eq!(part, again, "{pattern} {limit}");
+            }
+        }
+        // country filter keeps only matching countries
+        for code in ["RU", "GB"] {
+            let items = engine.suggest(pattern, 10, None, Some(&[code]));
+            for city in &items {
+                assert_eq!(
+                    engine.city_country(city).unwrap().code.as_str(),
+                    code,
+                    "{pattern} {code}"
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[test_log::test]
+fn suggest_population_tiebreak() -> Result<(), Box<dyn Error>> {
+    use geosuggest_core::index::SourceFileContentOptions;
+
+    // two exact-prefix matches: same score 1.0, different populations
+    let cities = "1\tAbc\tAbc\t\t55.0\t37.0\tP\tPPL\tRU\t\t\t\t\t\t100\t\t\tEurope/Moscow\t2020-01-01\n\
+                  2\tAbcd\tAbcd\t\t55.1\t37.1\tP\tPPL\tRU\t\t\t\t\t\t1000000\t\t\tEurope/Moscow\t2020-01-01\n";
+    let data = IndexData::new_from_files_content(SourceFileContentOptions {
+        cities: cities.to_owned(),
+        names: None,
+        countries: None,
+        admin1_codes: None,
+        admin2_codes: None,
+        filter_languages: vec![],
+        excluded_feature_codes:
+            geosuggest_core::index::DEFAULT_EXCLUDED_FEATURE_CODES.to_vec(),
+    })?;
+    let engine_data = EngineData::try_from(data)?;
+    let engine = engine_data.as_engine()?;
+
+    let items = engine.suggest::<&str>("abc", 2, None, None);
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].name, "Abcd");
+    assert_eq!(items[1].name, "Abc");
+
+    Ok(())
+}
+
+#[test_log::test]
+fn reverse_country_rounds() -> Result<(), Box<dyn Error>> {
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+    let engine = engine_data.as_engine()?;
+    let total = engine.data.geonames.len();
+
+    // a filtered query must return the same cities as filtering the full
+    // unfiltered list, no matter how many fetch rounds it takes; Voronezh
+    // coordinates with a GB filter force several rounds
+    for loc in [(51.6372, 39.1937), (53.84587, -0.42332)] {
+        let all = engine.reverse::<&str>(loc, total, None, None).unwrap();
+        for limit in [1usize, 2, 10] {
+            for codes in [&["GB"][..], &["RU"][..], &["GB", "RU"][..], &["XX"][..]] {
+                let filtered = engine
+                    .reverse(loc, limit, None, Some(&codes))
+                    .unwrap_or_default();
+                let expected: Vec<u32> = all
+                    .iter()
+                    .filter(|r| {
+                        engine
+                            .city_country(r.city)
+                            .map(|c| codes.contains(&c.code.as_str()))
+                            .unwrap_or(false)
+                    })
+                    .take(limit)
+                    .map(|r| r.city.id.to_native())
+                    .collect();
+                let got: Vec<u32> =
+                    filtered.iter().map(|r| r.city.id.to_native()).collect();
+                assert_eq!(got, expected, "{loc:?} {limit} {codes:?}");
+            }
+        }
+    }
 
     Ok(())
 }
@@ -102,9 +209,9 @@ fn reverse() -> Result<(), Box<dyn Error>> {
     let items = result.unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].city.name, "Voronezh");
-    assert_eq!(items[0].city.country.as_ref().unwrap().name, "Russia");
+    assert_eq!(engine.city_country(items[0].city).unwrap().name, "Russia");
     assert_eq!(
-        items[0].city.admin_division.as_ref().unwrap().name,
+        engine.city_admin1(items[0].city).unwrap().name,
         "Voronezj"
     );
 
@@ -114,7 +221,7 @@ fn reverse() -> Result<(), Box<dyn Error>> {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].city.name, "Beverley");
     assert_eq!(
-        items[0].city.admin2_division.as_ref().unwrap().name,
+        engine.city_admin2(items[0].city).unwrap().name,
         "East Riding of Yorkshire"
     );
 
@@ -135,7 +242,7 @@ fn capital() -> Result<(), Box<dyn Error>> {
     assert!(result.is_some());
     let city = result.unwrap();
     assert_eq!(city.name, "Moscow");
-    assert_eq!(city.country.as_ref().unwrap().name, "Russia");
+    assert_eq!(engine.city_country(city).unwrap().name, "Russia");
     Ok(())
 }
 
@@ -193,6 +300,86 @@ fn build_dump_load() -> Result<(), Box<dyn Error>> {
             .city
             .id,
     );
+
+    Ok(())
+}
+
+#[test_log::test]
+fn load_rejects_legacy_framing() -> Result<(), Box<dyn Error>> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+
+    // legacy framing written without `tracing`: length prefix + payload,
+    // with the metadata bytes missing. It must fail with a rebuild request,
+    // not a misread.
+    let filepath = temp_dir().join("test-engine-legacy.rkyv");
+    {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&filepath)?;
+        let metadata = rkyv::to_bytes::<rkyv::rancor::Error>(&engine_data.metadata)?;
+        file.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        file.write_all(&engine_data.data)?;
+    }
+
+    let err = match storage::Storage::new().load_from(&filepath) {
+        Ok(_) => panic!("legacy framing must be rejected"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("rebuild"),
+        "unexpected error: {err}"
+    );
+
+    Ok(())
+}
+
+#[test_log::test]
+fn load_rejects_wrong_version() -> Result<(), Box<dyn Error>> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+
+    // current framing, but stamped with a foreign layout version
+    let filepath = temp_dir().join("test-engine-wrong-version.rkyv");
+    {
+        let mut stale = geosuggest_core::EngineMetadata::default();
+        stale.index_format_version = u32::MAX;
+        let metadata = rkyv::to_bytes::<rkyv::rancor::Error>(&Some(stale))?;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&filepath)?;
+        file.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        file.write_all(&metadata)?;
+        file.write_all(&engine_data.data)?;
+    }
+
+    let err = match storage::Storage::new().load_from(&filepath) {
+        Ok(_) => panic!("wrong version must be rejected"),
+        Err(err) => err,
+    };
+    let message = err.to_string();
+    assert!(message.contains("rebuild"), "unexpected error: {message}");
+    assert!(
+        message.contains(&u32::MAX.to_string()),
+        "unexpected error: {message}"
+    );
+
+    // the dumped file carries the current version and loads fine
+    let current = temp_dir().join("test-engine-versioned.rkyv");
+    storage::Storage::new().dump_to(&current, &engine_data)?;
+    let loaded = storage::Storage::new().load_from(&current)?;
+    assert_eq!(loaded.data.len(), engine_data.data.len());
+    let engine = loaded.as_engine()?;
+    assert_eq!(engine.suggest::<&str>("voronezh", 1, None, None).len(), 1);
 
     Ok(())
 }

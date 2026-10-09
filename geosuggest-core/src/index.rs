@@ -26,12 +26,21 @@ fn split_content_to_n_parts(content: &str, n: usize) -> Vec<String> {
     }
 
     let lines: Vec<&str> = content.lines().collect();
-    lines.chunks(n).map(|chunk| chunk.join("\n")).collect()
+    if lines.is_empty() {
+        return vec![content.to_owned()];
+    }
+    // even chunks (one per worker), not `n` lines per chunk
+    let size = lines.len().div_ceil(n);
+    lines.chunks(size).map(|chunk| chunk.join("\n")).collect()
 }
 
 pub const DEFAULT_EXCLUDED_FEATURE_CODES: &[&str] = &[
     "PPLA3", "PPLA4", "PPLA5", "PPLF", "PPLL", "PPLQ", "PPLW", "PPLX", "STLMT",
 ];
+
+/// Archived index layout version. Bump it whenever an archived type changes;
+/// `Storage::load` rejects anything else with a rebuild request.
+pub const INDEX_FORMAT_VERSION: u32 = 1;
 
 pub struct SourceFileOptions<'a, P: AsRef<std::path::Path>> {
     pub cities: P,
@@ -59,15 +68,36 @@ pub struct IndexData {
     pub geonames: HashMap<u32, CitiesRecord>,
     pub capitals: HashMap<String, u32>,
     pub country_info_by_code: HashMap<String, CountryRecord>,
+    /// shared country table; `CitiesRecord::country_idx` points here
+    pub countries: Vec<Country>,
+    /// shared admin1 division table; `CitiesRecord::admin1_idx` points here
+    pub admin1_divisions: Vec<AdminDivision>,
+    /// shared admin2 division table; `CitiesRecord::admin2_idx` points here
+    pub admin2_divisions: Vec<AdminDivision>,
+    /// shared timezone table; `CitiesRecord::timezone_idx` points here
+    pub timezones: Vec<String>,
+    /// admin1 division name translations by division geonameid (shared by all cities)
+    pub admin1_names: HashMap<u32, HashMap<String, String>>,
+    /// admin2 division name translations by division geonameid (shared by all cities)
+    pub admin2_names: HashMap<u32, HashMap<String, String>>,
     pub tree: ImmutableKdTree<f32, 2>,
-    pub tree_index_to_geonameid: HashMap<usize, u32>,
+    /// geonameid per kd-tree point, in point order (replaces a HashMap<usize, u32>)
+    pub tree_index_to_geonameid: Vec<u32>,
 }
+
+/// No known country for `Entry::country_id` (geonameids never reach this value).
+pub const NO_COUNTRY_ID: u32 = u32::MAX;
+
+/// Table index for `CitiesRecord` fields with no value (`country_idx`,
+/// `admin1_idx`, `admin2_idx`). Geonameids never reach this value, and no
+/// table ever grows this long.
+pub const NO_TABLE_INDEX: u32 = u32::MAX;
 
 #[derive(Clone, rkyv::Serialize, rkyv::Deserialize, rkyv::Archive)]
 pub struct Entry {
-    pub id: u32,                 // geoname id
-    pub value: String,           // searchable value
-    pub country_id: Option<u32>, // geoname country id
+    pub id: u32,         // geoname id
+    pub value: String,   // searchable value
+    pub country_id: u32, // geoname country id, NO_COUNTRY_ID when unknown
 }
 
 // code, name, name ascii, geonameid
@@ -75,7 +105,7 @@ pub struct Entry {
 struct Admin1CodeRecordRaw {
     code: String,
     name: String,
-    _asciiname: String,
+    _asciiname: serde::de::IgnoredAny,
     geonameid: u32,
 }
 
@@ -84,7 +114,7 @@ struct Admin1CodeRecordRaw {
 struct Admin2CodeRecordRaw {
     code: String,
     name: String,
-    _asciiname: String,
+    _asciiname: serde::de::IgnoredAny,
     geonameid: u32,
 }
 
@@ -130,19 +160,19 @@ struct CitiesRecordRaw {
     alternatenames: String,
     latitude: f32,
     longitude: f32,
-    _feature_class: String,
+    _feature_class: serde::de::IgnoredAny,
     feature_code: String,
     country_code: String,
-    _cc2: String,
+    _cc2: serde::de::IgnoredAny,
     admin1_code: String,
     admin2_code: String,
-    _admin3_code: String,
-    _admin4_code: String,
+    _admin3_code: serde::de::IgnoredAny,
+    _admin4_code: serde::de::IgnoredAny,
     population: u32,
-    _elevation: String,
-    _dem: String,
+    _elevation: serde::de::IgnoredAny,
+    _dem: serde::de::IgnoredAny,
     timezone: String,
-    _modification_date: String,
+    _modification_date: serde::de::IgnoredAny,
 }
 
 // CounntryInfo
@@ -228,8 +258,8 @@ struct AlternateNamesRaw {
     is_short_name: String,
     is_colloquial: String,
     is_historic: String,
-    _from: String,
-    _to: String,
+    _from: serde::de::IgnoredAny,
+    _to: serde::de::IgnoredAny,
 }
 
 #[cfg_attr(feature = "oaph", derive(JsonSchema))]
@@ -266,23 +296,24 @@ pub struct CitiesRecord {
     pub latitude: f32,
     #[rkyv(attr(serde(serialize_with = "serialize_archived_f32")))]
     pub longitude: f32,
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_option")))]
-    pub country: Option<Country>,
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_option")))]
-    pub admin_division: Option<AdminDivision>,
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_option")))]
-    pub admin2_division: Option<AdminDivision>,
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_string")))]
-    pub timezone: String,
+    /// index into `IndexData::countries`, `NO_TABLE_INDEX` when unknown.
+    /// Resolve it with `Engine::city_country`.
+    #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
+    pub country_idx: u32,
+    /// index into `IndexData::admin1_divisions`, `NO_TABLE_INDEX` when unknown.
+    /// Resolve it with `Engine::city_admin1`.
+    #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
+    pub admin1_idx: u32,
+    /// index into `IndexData::admin2_divisions`, `NO_TABLE_INDEX` when unknown.
+    /// Resolve it with `Engine::city_admin2`.
+    #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
+    pub admin2_idx: u32,
+    /// index into `IndexData::timezones`.
+    /// Resolve it with `Engine::city_timezone`.
+    #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
+    pub timezone_idx: u32,
     #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]
     pub names: Option<HashMap<String, String>>,
-    // todo try reuse country info
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]
-    pub country_names: Option<HashMap<String, String>>,
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]
-    pub admin1_names: Option<HashMap<String, String>>,
-    #[rkyv(attr(serde(serialize_with = "serialize_archived_optional_map")))]
-    pub admin2_names: Option<HashMap<String, String>>,
     #[rkyv(attr(serde(serialize_with = "serialize_archived_u32")))]
     pub population: u32,
 }
@@ -543,11 +574,32 @@ impl IndexData {
                         let mut names_by_id: HashMap<u32, HashMap<String, AlternateNamesRaw>> =
                             HashMap::new();
 
-                        for row in rdr.deserialize() {
-                            let record: AlternateNamesRaw = if let Ok(r) = row {
-                                r
-                            } else {
+                        for row in rdr.records() {
+                            let row = if let Ok(r) = row { r } else { continue };
+
+                            // fast reject on borrowed fields before
+                            // allocating the full row struct; the same
+                            // checks run again below on the struct
+                            let geonameid: u32 = match row.get(1).and_then(|s| s.parse().ok()) {
+                                Some(g) => g,
+                                None => continue,
+                            };
+                            if !city_geoids.contains(&geonameid)
+                                && !country_geoids.contains(&geonameid)
+                                && !admin1_geoids.contains(&geonameid)
+                                && !admin2_geoids.contains(&geonameid)
+                            {
                                 continue;
+                            }
+                            if let Some(lang) = row.get(2) {
+                                if !filter_languages.iter().any(|l| l == &lang) {
+                                    continue;
+                                }
+                            }
+
+                            let record: AlternateNamesRaw = match row.deserialize(None) {
+                                Ok(r) => r,
+                                Err(_) => continue,
                             };
 
                             let is_city_name = city_geoids.contains(&record.geonameid);
@@ -610,27 +662,22 @@ impl IndexData {
                             }
                         }
 
-                        // convert names to simple struct
-                        let result: HashMap<u32, HashMap<String, String>> =
-                            names_by_id.iter().fold(HashMap::new(), |mut acc, c| {
-                                let (geonameid, names) = c;
-                                acc.insert(
-                                    *geonameid,
-                                    names.iter().fold(
-                                        HashMap::new(),
-                                        |mut accn: HashMap<String, String>, n| {
-                                            let (isolanguage, n) = n;
-                                            accn.insert(
-                                                isolanguage.to_owned(),
-                                                n.alternate_name.to_owned(),
-                                            );
-                                            accn
-                                        },
-                                    ),
-                                );
-                                acc
-                            });
-                        result
+                        // convert names to simple struct, consuming the raw
+                        // rows so both copies are never alive at once
+                        names_by_id
+                            .into_iter()
+                            .map(|(geonameid, names)| {
+                                (
+                                    geonameid,
+                                    names
+                                        .into_iter()
+                                        .map(|(isolanguage, n)| {
+                                            (isolanguage, n.alternate_name)
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .collect()
                     })
                     .reduce(HashMap::new, |mut m1, m2| {
                         m1.extend(m2);
@@ -648,6 +695,38 @@ impl IndexData {
             }
             None => None,
         };
+
+        // Shared division name tables: one entry per division instead of one
+        // copy per city. Country names already live in `country_info_by_code`.
+        let mut shared_admin1_names: HashMap<u32, HashMap<String, String>> = HashMap::new();
+        let mut shared_admin2_names: HashMap<u32, HashMap<String, String>> = HashMap::new();
+        if let Some(ref names) = names_by_id {
+            if let Some(ref divisions) = admin1_by_code {
+                for division in divisions.values() {
+                    if let Some(translations) = names.get(&division.id) {
+                        shared_admin1_names.insert(division.id, translations.clone());
+                    }
+                }
+            }
+            if let Some(ref divisions) = admin2_by_code {
+                for division in divisions.values() {
+                    if let Some(translations) = names.get(&division.id) {
+                        shared_admin2_names.insert(division.id, translations.clone());
+                    }
+                }
+            }
+        }
+
+        // Shared interning tables: one entry per distinct value instead of one
+        // copy per city.
+        let mut countries: Vec<Country> = Vec::new();
+        let mut country_pos: HashMap<u32, u32> = HashMap::new();
+        let mut admin1_table: Vec<AdminDivision> = Vec::new();
+        let mut admin1_pos: HashMap<u32, u32> = HashMap::new();
+        let mut admin2_table: Vec<AdminDivision> = Vec::new();
+        let mut admin2_pos: HashMap<u32, u32> = HashMap::new();
+        let mut timezones: Vec<String> = Vec::new();
+        let mut timezone_pos: HashMap<String, u32> = HashMap::new();
 
         let mut capitals: HashMap<String, u32> =
             HashMap::with_capacity(if let Some(items) = &country_by_code {
@@ -686,7 +765,8 @@ impl IndexData {
 
             let country_id = country_by_code
                 .as_ref()
-                .and_then(|m| m.get(&record.country_code).map(|c| c.geonameid));
+                .and_then(|m| m.get(&record.country_code).map(|c| c.geonameid))
+                .unwrap_or(NO_COUNTRY_ID);
 
             entries.push(Entry {
                 id: record.geonameid,
@@ -710,81 +790,95 @@ impl IndexData {
                 });
             }
 
-            let country = if let Some(ref c) = country_by_code {
+            let country_idx = if let Some(ref c) = country_by_code {
                 if is_capital {
                     capitals.insert(record.country_code.to_string(), record.geonameid);
                 }
-                c.get(&record.country_code).cloned()
-            } else {
-                None
-            };
-
-            let country_names = if let Some(ref c) = country {
-                match names_by_id {
-                    Some(ref names) => names.get(&c.geonameid).cloned(),
-                    None => None,
+                match c.get(&record.country_code) {
+                    Some(info) => match country_pos.get(&info.geonameid) {
+                        Some(&idx) => idx,
+                        None => {
+                            let idx = countries.len() as u32;
+                            countries.push(Country::from(info));
+                            country_pos.insert(info.geonameid, idx);
+                            idx
+                        }
+                    },
+                    None => NO_TABLE_INDEX,
                 }
             } else {
-                None
+                NO_TABLE_INDEX
             };
 
-            let admin_division = if let Some(ref a) = admin1_by_code {
-                a.get(&format!("{}.{}", record.country_code, record.admin1_code))
-                    .cloned()
-            } else {
-                None
-            };
-
-            let admin1_names = if let Some(ref a) = admin_division {
-                match names_by_id {
-                    Some(ref names) => names.get(&a.id).cloned(),
-                    None => None,
+            let admin1_idx = if let Some(ref a) = admin1_by_code {
+                match a.get(&format!("{}.{}", record.country_code, record.admin1_code)) {
+                    Some(division) => match admin1_pos.get(&division.id) {
+                        Some(&idx) => idx,
+                        None => {
+                            let idx = admin1_table.len() as u32;
+                            admin1_table.push(division.clone());
+                            admin1_pos.insert(division.id, idx);
+                            idx
+                        }
+                    },
+                    None => NO_TABLE_INDEX,
                 }
             } else {
-                None
+                NO_TABLE_INDEX
             };
 
-            let admin2_division = if let Some(ref a) = admin2_by_code {
-                a.get(&format!(
+            let admin2_idx = if let Some(ref a) = admin2_by_code {
+                match a.get(&format!(
                     "{}.{}.{}",
                     record.country_code, record.admin1_code, record.admin2_code
-                ))
-                .cloned()
-            } else {
-                None
-            };
-
-            let admin2_names = if let Some(ref a) = admin2_division {
-                match names_by_id {
-                    Some(ref names) => names.get(&a.id).cloned(),
-                    None => None,
+                )) {
+                    Some(division) => match admin2_pos.get(&division.id) {
+                        Some(&idx) => idx,
+                        None => {
+                            let idx = admin2_table.len() as u32;
+                            admin2_table.push(division.clone());
+                            admin2_pos.insert(division.id, idx);
+                            idx
+                        }
+                    },
+                    None => NO_TABLE_INDEX,
                 }
             } else {
-                None
+                NO_TABLE_INDEX
             };
+
+            let timezone_idx = match timezone_pos.get(record.timezone.as_str()) {
+                Some(&idx) => idx,
+                None => {
+                    let idx = timezones.len() as u32;
+                    timezone_pos.insert(record.timezone.clone(), idx);
+                    timezones.push(record.timezone.clone());
+                    idx
+                }
+            };
+
             geonames.push(CitiesRecord {
                 id: record.geonameid,
                 name: record.name,
-                country: country.as_ref().map(Country::from),
-                admin_division,
-                admin2_division,
+                country_idx,
+                admin1_idx,
+                admin2_idx,
                 latitude: record.latitude,
                 longitude: record.longitude,
-                timezone: record.timezone,
+                timezone_idx,
                 names: match names_by_id {
                     Some(ref mut names) => {
                         if is_capital {
                             names.get(&record.geonameid).cloned()
                         } else {
-                            // don't hold unused data
+                            // detach the city's map from the shared table;
+                            // `remove` returns it, so the city keeps its own
+                            // translations for lang rendering
                             names.remove(&record.geonameid)
                         }
                     }
                     None => None,
                 },
-                country_names,
-                admin1_names,
-                admin2_names,
                 population: record.population,
             });
         }
@@ -792,12 +886,8 @@ impl IndexData {
         geonames.sort_unstable_by_key(|item| item.id);
         geonames.dedup_by_key(|item| item.id);
 
-        let tree_index_to_geonameid = HashMap::from_iter(
-            geonames
-                .iter()
-                .enumerate()
-                .map(|(index, item)| (index, item.id)),
-        );
+        let tree_index_to_geonameid =
+            geonames.iter().map(|item| item.id).collect::<Vec<u32>>();
         let tree = ImmutableKdTree::new_from_slice(
             geonames
                 .iter()
@@ -811,6 +901,12 @@ impl IndexData {
             tree_index_to_geonameid,
             entries,
             geonames: HashMap::from_iter(geonames.into_iter().map(|item| (item.id, item))),
+            admin1_names: shared_admin1_names,
+            admin2_names: shared_admin2_names,
+            countries,
+            admin1_divisions: admin1_table,
+            admin2_divisions: admin2_table,
+            timezones,
             country_info_by_code: if let Some(country_by_code) = country_by_code {
                 HashMap::from_iter(country_by_code.into_iter().map(|(code, country)| {
                     let country_record = CountryRecord {
@@ -869,18 +965,6 @@ where
     S: Serializer,
 {
     s.serialize_f32(value.to_native())
-}
-
-fn serialize_archived_option<S, T>(value: &ArchivedOption<T>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-    T: serde::Serialize,
-{
-    if let Some(v) = value.as_ref() {
-        s.serialize_some(v)
-    } else {
-        s.serialize_none()
-    }
 }
 
 fn serialize_archived_optional_map<S>(
