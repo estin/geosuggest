@@ -22,7 +22,7 @@ tracing-subscriber = {
   ]
 }
 
-config = "0.15"
+bonfig = "0.1"
 csv = "1"
 geoip2 = "0.1"
 kiddo = {
