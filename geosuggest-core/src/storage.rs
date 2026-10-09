@@ -36,9 +36,7 @@ impl Storage {
         W: std::io::Write,
     {
         let metadata = rkyv::to_bytes::<Error>(&engine_data.metadata)?;
-
         buf.write_all(&(metadata.len() as u32).to_be_bytes())?;
-        #[cfg(feature = "tracing")]
         buf.write_all(&metadata)?;
 
         buf.write_all(&engine_data.data)?;
@@ -138,5 +136,33 @@ impl Storage {
         );
 
         Ok(index)
+    }
+}
+
+#[cfg(all(test, not(feature = "tracing")))]
+mod tests {
+    use super::Storage;
+    use crate::{EngineData, EngineMetadata};
+    use std::io::Cursor;
+
+    #[test]
+    fn dump_and_load_preserve_payload_without_tracing() {
+        let mut payload = rkyv::util::AlignedVec::<128>::new();
+        payload.extend_from_slice(&[0xA5; 256]);
+        let mut engine_data = EngineData::try_from(payload).unwrap();
+        engine_data.metadata = Some(EngineMetadata::default());
+
+        let storage = Storage::new();
+        let mut serialized = Vec::new();
+        storage.dump(&mut serialized, &engine_data).unwrap();
+
+        let metadata = rkyv::to_bytes::<rkyv::rancor::Error>(&engine_data.metadata).unwrap();
+        let declared_len =
+            u32::from_be_bytes(serialized[0..4].try_into().unwrap()) as usize;
+        assert_eq!(declared_len, metadata.len());
+        assert_eq!(serialized.len(), 4 + metadata.len() + engine_data.data.len());
+
+        let loaded = storage.load(&mut Cursor::new(serialized)).unwrap();
+        assert_eq!(loaded.data.as_ref(), engine_data.data.as_ref());
     }
 }
