@@ -33,7 +33,7 @@ ntex-files.workspace = true
 ntex-cors.workspace = true
 bonfig.workspace = true
 
-geosuggest-core = { path = "../geosuggest-core", version = "0.8", features = ["oaph"] }
+geosuggest-core = { path = "../geosuggest-core", version = "0.9", features = ["oaph"] }
 
 # openapi3
 oaph.workspace = true 
