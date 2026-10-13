@@ -46,7 +46,7 @@ RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
 
 # demo ui
 RUN cargo install wasm-bindgen-cli
-RUN cargo install trunk
+RUN cargo install trunk --locked
 RUN rustup target add wasm32-unknown-unknown
 RUN cd /root/geosuggest-release/geosuggest-demo \
     && trunk build --release -d /root/geosuggest-demo-release
