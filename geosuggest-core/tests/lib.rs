@@ -457,3 +457,71 @@ fn country_info() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+#[test_log::test]
+fn load_rejects_v0_8_5_metadata() -> Result<(), Box<dyn Error>> {
+    use std::collections::HashMap;
+    use std::io::Write;
+
+    // `EngineMetadata` as 0.8.5 archived it: no `index_format_version`
+    #[derive(rkyv::Archive, rkyv::Serialize)]
+    struct EngineMetadataV085 {
+        geosuggest_version: String,
+        #[rkyv(with = rkyv::with::AsUnixTime)]
+        created_at: std::time::SystemTime,
+        source: geosuggest_core::EngineSourceMetadata,
+        extra: HashMap<String, String>,
+    }
+
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+    let old = Some(EngineMetadataV085 {
+        geosuggest_version: "0.8.5".to_owned(),
+        created_at: std::time::SystemTime::now(),
+        source: Default::default(),
+        extra: HashMap::new(),
+    });
+    let metadata = rkyv::to_bytes::<rkyv::rancor::Error>(&old)?;
+
+    let filepath = temp_dir().join("test-engine-v0.8.5.rkyv");
+    {
+        let mut file = std::fs::File::create(&filepath)?;
+        file.write_all(&(metadata.len() as u32).to_be_bytes())?;
+        file.write_all(&metadata)?;
+        file.write_all(&engine_data.data)?;
+    }
+
+    let storage = storage::Storage::new();
+    // the MIGRATION.md text depends on this exact message
+    let err = storage.load_from(&filepath).err().expect("must be rejected");
+    assert_eq!(
+        err.to_string(),
+        "index metadata is unreadable; rebuild the index and retry"
+    );
+    assert!(storage.read_metadata(&filepath)?.is_none());
+
+    Ok(())
+}
+
+#[test_log::test]
+fn load_at_offset_keeps_metadata() -> Result<(), Box<dyn Error>> {
+    use std::io::{Cursor, Seek, SeekFrom};
+
+    let engine_data = get_engine_data(None, None, None, vec![])?;
+    let storage = storage::Storage::new();
+
+    // index stored after unrelated leading bytes
+    let mut buf = b"leading bytes".to_vec();
+    storage.dump(&mut buf, &engine_data)?;
+    let mut reader = Cursor::new(buf);
+    reader.seek(SeekFrom::Start(13))?;
+
+    let loaded = storage.load(&mut reader)?;
+    let metadata = loaded.metadata.as_ref().expect("metadata kept");
+    assert_eq!(
+        metadata.index_format_version,
+        geosuggest_core::index::INDEX_FORMAT_VERSION
+    );
+    assert!(loaded.as_engine()?.get(&472045).is_some());
+
+    Ok(())
+}

@@ -21,10 +21,16 @@ The migration has three parts: rebuild the index, update code that touches the c
 
 Storage load reads the version first and rejects files with a different version.
 
-If the code loads an old index file, it returns this error:
+Index files from 0.8.5 and before have no version field, so their metadata does not parse. If the code loads such a file, it returns this error:
 
 ```
-index format version 0 is not supported (code expects 1); rebuild the index and retry
+index metadata is unreadable; rebuild the index and retry
+```
+
+If a file has a version field with a different value, the error names both versions:
+
+```
+index format version 2 is not supported (code expects 1); rebuild the index and retry
 ```
 
 #### 1.1 Rebuild steps

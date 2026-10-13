@@ -153,9 +153,12 @@ impl Engine<'_> {
         let min_score = min_score.unwrap_or(0.8);
         let normalized_pattern = pattern.to_lowercase();
 
-        // Ranked candidate. Descending order: higher score first; within
-        // EPSILON, higher population first; exact ties by id so the order
-        // stays deterministic (no order was ever promised between them).
+        // Ranked candidate. Descending order: higher score first, then
+        // higher population, then id so the order stays deterministic.
+        // `total_cmp` keeps this a total order, so the sort cannot panic.
+        // Do not compare scores with an EPSILON "equal": it is not
+        // transitive, and since Rust 1.81 `sort_unstable_by` may panic on
+        // a comparator that is not a total order.
         #[derive(Clone, Copy)]
         struct Cand {
             score: f32,
@@ -163,14 +166,10 @@ impl Engine<'_> {
             id: u32,
         }
         fn rank_desc(a: &Cand, b: &Cand) -> std::cmp::Ordering {
-            if (a.score - b.score).abs() < f32::EPSILON {
-                b.pop.cmp(&a.pop).then_with(|| a.id.cmp(&b.id))
-            } else {
-                // same shape as the old comparator: higher score first
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            }
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| b.pop.cmp(&a.pop))
+                .then_with(|| a.id.cmp(&b.id))
         }
 
         // Highest-ranked `limit` distinct ids, each with its best score.
@@ -302,6 +301,11 @@ impl Engine<'_> {
             }
             None => limit,
         };
+
+        // no requested code is known: nothing can match, skip the full scan
+        if allowed.as_ref().is_some_and(|ids| ids.is_empty()) {
+            return Some(Vec::new());
+        }
 
         // With a country filter, fetch nearest in growing rounds instead of
         // the whole index at once. Stopping at the first round that covers

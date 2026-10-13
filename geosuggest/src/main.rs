@@ -538,6 +538,32 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
     Ok(())
 }
 
+/// Registers every route. Shared by `main` and the tests so both see the
+/// same route order.
+pub fn routes(cfg: &mut web::ServiceConfig<AppState, ()>, settings: &settings::Settings) {
+    let scope = web::scope(&settings.url_path_prefix).service((
+        // api
+        web::resource("/api/city/get").to_with_state(city_get),
+        web::resource("/api/city/capital").to_with_state(capital),
+        web::resource("/api/city/suggest").to_with_state(suggest),
+        web::resource("/api/city/reverse").to_with_state(reverse),
+        #[cfg(feature = "geoip2")]
+        web::resource("/api/city/geoip2").to_with_state(geoip2),
+        // serve openapi3 yaml and ui from files
+        fs::Files::new("/openapi3.yaml", std::env::temp_dir()).index_file("openapi3.yaml"),
+        fs::Files::new("/swagger", std::env::temp_dir()).index_file("swagger-ui.html"),
+        fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
+    ));
+    // ntex routes match in registration order and `Files` at "/" matches
+    // every path, so static files must come after the api
+    match settings.static_dir.as_ref() {
+        Some(static_dir) => {
+            cfg.service(scope.service(fs::Files::new("/", static_dir).index_file("index.html")))
+        }
+        None => cfg.service(scope),
+    };
+}
+
 #[ntex::main]
 async fn main() -> std::io::Result<()> {
     // logging
@@ -603,32 +629,7 @@ async fn main() -> std::io::Result<()> {
                 // enable logger
                 .middleware(middleware::Logger::default())
                 .middleware(Cors::default())
-                .service(
-                    web::scope(&settings.url_path_prefix)
-                        .configure(move |cfg: &mut web::ServiceConfig<AppState, _>| {
-                            if let Some(static_dir) = settings.static_dir.as_ref() {
-                                cfg.service(
-                                    fs::Files::new("/", static_dir).index_file("index.html"),
-                                );
-                            }
-                        })
-                        .service((
-                            // api
-                            web::resource("/api/city/get").to_with_state(city_get),
-                            web::resource("/api/city/capital").to_with_state(capital),
-                            web::resource("/api/city/suggest").to_with_state(suggest),
-                            web::resource("/api/city/reverse").to_with_state(reverse),
-                            #[cfg(feature = "geoip2")]
-                            web::resource("/api/city/geoip2").to_with_state(geoip2),
-                            // serve openapi3 yaml and ui from files
-                            fs::Files::new("/openapi3.yaml", std::env::temp_dir())
-                                .index_file("openapi3.yaml"),
-                            fs::Files::new("/swagger", std::env::temp_dir())
-                                .index_file("swagger-ui.html"),
-                            fs::Files::new("/redoc", std::env::temp_dir())
-                                .index_file("redoc-ui.html"),
-                        )),
-                )
+                .configure(move |cfg| routes(cfg, &settings))
         },
     )
     .bind(listen_on, ntex::SharedCfg::default())?

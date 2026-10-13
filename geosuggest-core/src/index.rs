@@ -883,7 +883,9 @@ impl IndexData {
             });
         }
 
-        geonames.sort_unstable_by_key(|item| item.id);
+        // stable sort: dedup keeps the first row of a duplicate id, the one
+        // that took the shared translations out of `names_by_id`
+        geonames.sort_by_key(|item| item.id);
         geonames.dedup_by_key(|item| item.id);
 
         let tree_index_to_geonameid =

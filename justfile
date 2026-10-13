@@ -4,13 +4,17 @@ list:
 clippy:
     cargo clippy --workspace --fix --broken-code --allow-dirty --allow-staged --no-default-features --features="tokio,geoip2,tracing"
 
+lint:
+    cargo clippy --workspace --no-default-features --features="tokio,geoip2,tracing" -- -D warnings
+
 test:
-    cargo nextest run --no-default-features --features="tokio,geoip2,tracing"
+    cargo nextest run --workspace --no-default-features --features="tokio,geoip2,tracing"
+    cargo test --doc --workspace --no-default-features --features="tokio,geoip2,tracing"
 
 example:
     cargo run -p geosuggest-examples --release --bin simple
 
-ci: clippy test example
+ci: lint test example
 
 bump:
     #!/usr/bin/env bash
@@ -20,6 +24,7 @@ bump:
     VERSION="${VERSION#v}"
     [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "git-cliff returned invalid version: $VERSION" >&2; exit 1; }
     SERIES="${VERSION%.*}"
+    git-cliff --tag "v$VERSION" --output CHANGELOG.md
     sed -i -E '/^\[workspace\.package\]/,/^\[/ s/^version = .*/version = "'"$VERSION"'"/' Cargo.toml
     sed -i -E 's/(geosuggest-(core|utils) = \{ path = "[^"]+", version = ")[^"]+/\1'"$SERIES"'/' geosuggest*/Cargo.toml
     echo "Updated workspace version to $VERSION"

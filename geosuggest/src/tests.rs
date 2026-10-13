@@ -509,3 +509,33 @@ async fn api_reverse_filter_by_countries() -> Result<(), Error> {
 
     Ok(())
 }
+
+#[test_log::test(ntex::test)]
+async fn api_not_shadowed_by_static_dir() -> Result<(), Error> {
+    use bonfig::FromSource as _;
+
+    let static_dir = std::env::temp_dir().join("geosuggest-test-static");
+    std::fs::create_dir_all(&static_dir)?;
+    std::fs::write(static_dir.join("index.html"), "static index")?;
+    let settings =
+        super::settings::Settings::from_toml(&format!("static_dir = '{}'", static_dir.display()))?;
+
+    let app = test::init_service_st(
+        build_test_state(),
+        App::new().configure(move |cfg| super::routes(cfg, &settings)),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/api/city/get?id=472045")
+        .to_request();
+    let resp = app.call(req).await.unwrap();
+    assert_eq!(resp.status(), http::StatusCode::OK);
+
+    let req = test::TestRequest::get().uri("/").to_request();
+    let resp = app.call(req).await.unwrap();
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    assert_eq!(test::read_body(resp).await.as_ref(), b"static index");
+
+    Ok(())
+}

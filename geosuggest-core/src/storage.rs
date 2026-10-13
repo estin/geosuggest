@@ -65,6 +65,9 @@ impl Storage {
         }
         // metadata is tiny; anything bigger is corruption, and reading it
         // unchecked could exhaust memory (see MAX_METADATA_LEN)
+        // offsets below are relative to where the index starts, so the reader
+        // may hold the index at any position
+        let base = buf.stream_position().map_err(|_| stale("cannot read index"))?;
         let mut len_prefix = [0; 4];
         if buf.read_exact(&mut len_prefix).is_err() {
             return Err(stale("cannot read index header"));
@@ -74,10 +77,10 @@ impl Storage {
             return Err(stale("index header is corrupt"));
         }
         let end = buf.seek(SeekFrom::End(0)).map_err(|_| stale("cannot read index"))?;
-        if end.saturating_sub(4) < metadata_len {
+        if end.saturating_sub(base + 4) < metadata_len {
             return Err(stale("index file is truncated"));
         }
-        buf.seek(SeekFrom::Start(4))
+        buf.seek(SeekFrom::Start(base + 4))
             .map_err(|_| stale("cannot read index"))?;
         let mut raw_metadata = vec![0u8; metadata_len as usize];
         if buf.read_exact(&mut raw_metadata).is_err() {
@@ -103,7 +106,7 @@ impl Storage {
 
         // reserve the exact payload size so the buffer never rounds up to a
         // power of two while reading a large index
-        let payload_start = 4 + metadata_len;
+        let payload_start = base + 4 + metadata_len;
         let mut bytes = rkyv::util::AlignedVec::<128>::new();
         bytes.reserve_exact(end.saturating_sub(payload_start) as usize);
         buf.seek(SeekFrom::Start(payload_start))
@@ -113,7 +116,9 @@ impl Storage {
         }
         bytes.shrink_to_fit();
 
-        Ok(bytes.try_into()?)
+        let mut engine_data: crate::EngineData = bytes.try_into()?;
+        engine_data.metadata = metadata;
+        Ok(engine_data)
     }
 
     /// Read engine metadata and don't load whole engine.
