@@ -42,9 +42,7 @@ strsim = "0.11"
 itertools = "0.15"
 rkyv = { version = "0.8" }
 
-ntex = { version = "4.1", features = ["tokio"] }
-ntex-cors = "4"
-ntex-files = "4"
+topcoat = { version = "0.9", default-features = false, features = ["router", "serve"] }
 # service
 oaph = { version = "0.2" }
 
