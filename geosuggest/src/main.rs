@@ -668,7 +668,7 @@ pub fn build_router(app_state: AppState, settings: &settings::Settings) -> Route
 fn build_router_with_assets(
     app_state: AppState,
     settings: &settings::Settings,
-    assets: DemoAssetConfig,
+    _assets: DemoAssetConfig,
 ) -> Router {
     let prefix = settings.url_path_prefix.trim_matches('/');
     let mut builder = Router::builder()
@@ -744,12 +744,10 @@ fn build_router_with_assets(
             url_path_prefix: settings.url_path_prefix.clone(),
         };
         builder = builder.runtime().app_context(engine_context);
-        if let Some(assets) = assets {
+        if let Some(assets) = _assets {
             builder = builder.assets(assets);
         }
     }
-    #[cfg(not(feature = "demo"))]
-    let _ = assets;
     builder = builder.app_context(app_state);
     builder.build()
 }

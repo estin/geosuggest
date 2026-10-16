@@ -52,7 +52,7 @@ RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
 # final stage
 FROM debian:bookworm-slim
 
-ARG PORT=$PORT
+ARG PORT=8000
 ARG GEOSUGGEST_INDEX=geosuggest-index.rkyv
 
 COPY --from=0 /root/geosuggest-release/target/release/geosuggest /usr/bin
@@ -62,6 +62,7 @@ COPY --from=0 /opt/$GEOSUGGEST_INDEX /opt/$GEOSUGGEST_INDEX
 # default configuration
 EXPOSE $PORT
 ENV GEOSUGGEST_CONFIG_FILE="/opt/geosuggest-settings.toml"
+ENV PORT=$PORT
 ENV RUST_LOG=geosuggest=trace
 
 RUN echo "host = '0.0.0.0'" >> /opt/geosuggest-settings.toml \

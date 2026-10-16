@@ -131,6 +131,17 @@ The command builds the index when it is missing. To rebuild it, run:
 $ just rebuild-index
 ```
 
+Build the demo image with Nix, then load it into Docker:
+
+```console
+$ nix build .#demo-image
+$ docker load < result
+$ docker run --rm -p 8000:8000 geosuggest-demo:latest
+```
+
+Nix builds the server, bundles the Topcoat assets, and creates the search index
+inside the image. Docker is only needed to load and run the image.
+
 Check
 
 ```console
