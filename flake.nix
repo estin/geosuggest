@@ -43,9 +43,15 @@
 
       packages = forAllSystems (pkgs: rust:
         let
+          # Build with a minimal toolchain (rustc, cargo, rust-std only).
+          # The extended `rust` (clippy, rust-analyzer, rust-src, rustfmt)
+          # stays in the dev shell. Binaries compiled with the extended
+          # toolchain embed stdlib source paths that reference the whole
+          # toolchain closure (~2GB extra in the container image).
+          rustForBuild = pkgs.rust-bin.stable.latest.minimal;
           rustPlatform = pkgs.makeRustPlatform {
-            cargo = rust;
-            rustc = rust;
+            cargo = rustForBuild;
+            rustc = rustForBuild;
           };
 
           topcoatCliSource = pkgs.fetchCrate {

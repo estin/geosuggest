@@ -4,12 +4,6 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-    inputs:
-      publish_demo_image:
-        description: Build and publish the demo image to GHCR
-        type: boolean
-        default: false
-        required: false
 
 permissions:
   contents: read
@@ -26,7 +20,8 @@ jobs:
       - run: nix develop -c just ci
 
   publish-demo-image:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_demo_image
+    # runs on every push, PR and manual dispatch;
+    # the image is pushed to GHCR only outside pull_request builds
     name: publish demo image
     runs-on: ubuntu-latest
     permissions:
@@ -46,6 +41,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Tag and publish image
+        # do not publish from pull_request builds (GITHUB_SHA is a merge commit
+        # and forks have no packages:write token)
+        if: github.event_name != 'pull_request'
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/geosuggest-demo"
           docker tag geosuggest-demo:latest "$image:latest"
