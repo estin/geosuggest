@@ -20,8 +20,9 @@ jobs:
       - run: nix develop -c just ci
 
   publish-demo-image:
-    # runs on every push, PR and manual dispatch;
-    # the image is pushed to GHCR only outside pull_request builds
+    # runs on every push, PR and manual dispatch, but only after the test job
+    # passes; the image is pushed to GHCR only outside pull_request builds
+    needs: test
     name: publish demo image
     runs-on: ubuntu-latest
     permissions:
