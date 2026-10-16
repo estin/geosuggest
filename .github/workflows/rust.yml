@@ -1,6 +1,18 @@
 name: tests suite
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_demo_image:
+        description: Build and publish the demo image to GHCR
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -12,3 +24,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - run: nix develop -c just ci
+
+  publish-demo-image:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_demo_image
+    name: publish demo image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build and load image
+        run: |
+          nix build --impure .#demo-image --out-link /tmp/geosuggest-demo-image
+          docker load < /tmp/geosuggest-demo-image
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and publish image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/geosuggest-demo"
+          docker tag geosuggest-demo:latest "$image:latest"
+          docker tag geosuggest-demo:latest "$image:sha-${GITHUB_SHA::12}"
+          docker push "$image:latest"
+          docker push "$image:sha-${GITHUB_SHA::12}"

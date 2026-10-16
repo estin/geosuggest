@@ -87,25 +87,20 @@
             '';
           };
 
-          cities5000 = pkgs.fetchurl {
+          cities5000 = builtins.fetchurl {
             url = "https://download.geonames.org/export/dump/cities5000.zip";
-            hash = "sha256-1EDDy4QWvpuSo3ZzfwoBkkO5Avqnq5WpKcPEMpC96Hc=";
           };
-          alternateNames = pkgs.fetchurl {
+          alternateNames = builtins.fetchurl {
             url = "https://download.geonames.org/export/dump/alternateNamesV2.zip";
-            hash = "sha256-jz57lj0L0xw0Zd9In8WfLtpJMPGyjQwKak0LN7s9vlE=";
           };
-          admin1Codes = pkgs.fetchurl {
+          admin1Codes = builtins.fetchurl {
             url = "https://download.geonames.org/export/dump/admin1CodesASCII.txt";
-            hash = "sha256-HakqYyOl/sMXbz90O/TPQED9Vqh22lXkb7yiPIY6pgo=";
           };
-          admin2Codes = pkgs.fetchurl {
+          admin2Codes = builtins.fetchurl {
             url = "https://download.geonames.org/export/dump/admin2Codes.txt";
-            hash = "sha256-DbuZiPqTiAIe/gJu0W3guJ9WMU8t/Qq7SlHhe4xV8p8=";
           };
-          countryInfo = pkgs.fetchurl {
+          countryInfo = builtins.fetchurl {
             url = "https://download.geonames.org/export/dump/countryInfo.txt";
-            hash = "sha256-xV9jjPqvtP5FqaoVEgoPH3joo0qOGEfXuTIM90D7yas=";
           };
 
           geosuggestIndex = pkgs.runCommand "geosuggest-index" {
