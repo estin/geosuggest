@@ -117,7 +117,8 @@ $ cargo build --release
 
 The default build serves only the HTTP API. The `demo` feature adds a page
 rendered by the server, plus Swagger and ReDoc. `just run` enables this feature
-and bundles the browser assets.
+and bundles the browser assets. The demo page is served only when
+`url_path_prefix` is `/`. The `static_dir` setting also needs this feature.
 
 Run the server, demo, Swagger page, and ReDoc page with one command.
 

@@ -484,15 +484,12 @@ async fn geoip2(cx: &Cx) -> Result<router::content::Json<GeoIP2Result<'static>>>
 }
 
 #[cfg(feature = "demo")]
+#[derive(Clone)]
+struct StaticIndex(String);
+
+#[cfg(feature = "demo")]
 async fn root_index(cx: &Cx) -> Result<Html<String>> {
-    let app = app_context::<AppState>(cx);
-    if let Some(dir) = &app.settings.static_dir {
-        let path = std::path::PathBuf::from(dir).join("index.html");
-        if let Ok(body) = std::fs::read_to_string(path) {
-            return Ok(Html(body));
-        }
-    }
-    Ok(Html("geosuggest".to_string()))
+    Ok(Html(app_context::<StaticIndex>(cx).0.clone()))
 }
 
 #[cfg(feature = "swagger")]
@@ -649,6 +646,25 @@ fn cors_layer<'cx>(cx: &'cx Cx, body: Body, next: Next<'cx>) -> LayerFuture<'cx>
     })
 }
 
+#[cfg(feature = "tracing")]
+fn log_layer<'cx>(cx: &'cx Cx, body: Body, next: Next<'cx>) -> LayerFuture<'cx> {
+    Box::pin(async move {
+        let now = Instant::now();
+        let parts = router::request::parts(cx);
+        let (method, uri) = (parts.method.clone(), parts.uri.clone());
+        let response = next.run(cx, body).await;
+        match &response {
+            Ok(response) => tracing::info!(
+                "{method} {uri} {} {:?}",
+                response.status().as_u16(),
+                now.elapsed()
+            ),
+            Err(err) => tracing::warn!("{method} {uri} failed: {err} {:?}", now.elapsed()),
+        }
+        response
+    })
+}
+
 #[cfg(feature = "demo")]
 type DemoAssetConfig = Option<AssetConfig>;
 #[cfg(not(feature = "demo"))]
@@ -713,19 +729,27 @@ fn build_router_with_assets(
     }
     #[cfg(feature = "demo")]
     {
-        let root_path = route_path(prefix, "/");
-        if settings.static_dir.is_some() {
-            builder = builder.route(RouteFn::new(Method::GET, root_path, root_index_route));
-        } else {
-            builder = builder.page(geosuggest_demo::home_page_at(join_url_path(prefix, "/")));
-        }
-        builder = builder
-            .route(geosuggest_demo::suggest_results)
-            .route(geosuggest_demo::reverse_results)
-            .route(geosuggest_demo::city_detail);
         if let Some(dir) = settings.static_dir.clone() {
-            let static_path = route_path(prefix, "/{*file}");
-            builder = builder.serve_dir(static_path, dir);
+            let index = std::fs::read_to_string(std::path::Path::new(&dir).join("index.html"))
+                .unwrap_or_else(|_| "geosuggest".to_owned());
+            builder = builder
+                .route(RouteFn::new(
+                    Method::GET,
+                    route_path(prefix, "/"),
+                    root_index_route,
+                ))
+                .serve_dir(route_path(prefix, "/{*file}"), dir)
+                .app_context(StaticIndex(index));
+        } else if prefix.is_empty() {
+            builder = builder
+                .page(geosuggest_demo::home_page)
+                .route(geosuggest_demo::suggest_results)
+                .route(geosuggest_demo::reverse_results)
+                .route(geosuggest_demo::city_detail);
+        } else {
+            // Topcoat fixes shard URLs at compile time, so they cannot follow the prefix.
+            #[cfg(feature = "tracing")]
+            tracing::warn!("The demo page is served only when url_path_prefix is \"/\"");
         }
     }
     #[cfg(feature = "geoip2")]
@@ -737,11 +761,14 @@ fn build_router_with_assets(
         ));
     }
     builder = builder.layer(LayerFn::new(None::<&str>, cors_layer));
+    #[cfg(feature = "tracing")]
+    {
+        builder = builder.layer(LayerFn::new(None::<&str>, log_layer));
+    }
     #[cfg(feature = "demo")]
     {
         let engine_context = geosuggest_demo::EngineContext {
             engine: app_state.engine,
-            url_path_prefix: settings.url_path_prefix.clone(),
         };
         builder = builder.runtime().app_context(engine_context);
         if let Some(assets) = _assets {
@@ -750,14 +777,6 @@ fn build_router_with_assets(
     }
     builder = builder.app_context(app_state);
     builder.build()
-}
-
-pub fn router(app_state: AppState, settings: &settings::Settings) -> Router {
-    build_router(app_state, settings)
-}
-
-pub fn routes(settings: &settings::Settings, app_state: AppState) -> Router {
-    build_router(app_state, settings)
 }
 
 #[tokio::main]
@@ -781,6 +800,10 @@ async fn main() -> std::io::Result<()> {
 
     if settings.index_file.is_empty() {
         panic!("Please set `index_file`");
+    }
+    #[cfg(not(feature = "demo"))]
+    if settings.static_dir.is_some() {
+        panic!("`static_dir` needs the `demo` feature");
     }
 
     let storage = storage::Storage::new();

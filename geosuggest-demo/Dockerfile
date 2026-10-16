@@ -32,12 +32,12 @@ RUN cd /tmp \
     && unzip alternateNamesV2.zip
 
 # fix new Russian regions
-RUN sed -ie "s/UA\t\t11/RU\t\t192/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t20/RU\t\t193/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t05/RU\t\t194/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t14/RU\t\t195/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t08/RU\t\t196/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t26/RU\t\t197/p" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t11/RU\t\t192/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t20/RU\t\t193/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t05/RU\t\t194/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t14/RU\t\t195/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t08/RU\t\t196/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t26/RU\t\t197/" /tmp/$CITIES.txt
 
 RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \

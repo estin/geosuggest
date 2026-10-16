@@ -218,6 +218,21 @@ async fn demo_page_renders_topcoat_shards_on_the_server() {
     assert!(!html.contains("/api/city/"));
 }
 
+#[cfg(feature = "demo")]
+#[tokio::test]
+async fn demo_page_is_not_served_under_a_prefix() {
+    let app = build_test_router(settings("/geosuggest", None));
+
+    for path in ["/", "/geosuggest"] {
+        let response = app.handle(request(path)).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    let response = app
+        .handle(request("/geosuggest/api/city/get?id=472045"))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
 #[cfg(not(any(feature = "demo", feature = "swagger")))]
 #[tokio::test]
 async fn api_only_build_does_not_register_ui_routes() {

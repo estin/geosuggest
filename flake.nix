@@ -114,12 +114,12 @@
             cp ${admin2Codes} "$data_dir/admin2Codes.txt"
             cp ${countryInfo} "$data_dir/countryInfo.txt"
 
-            sed -i -e 's/UA\t\t11/RU\t\t192/p' "$data_dir/cities5000.txt"
-            sed -i -e 's/UA\t\t20/RU\t\t193/p' "$data_dir/cities5000.txt"
-            sed -i -e 's/UA\t\t05/RU\t\t194/p' "$data_dir/cities5000.txt"
-            sed -i -e 's/UA\t\t14/RU\t\t195/p' "$data_dir/cities5000.txt"
-            sed -i -e 's/UA\t\t08/RU\t\t196/p' "$data_dir/cities5000.txt"
-            sed -i -e 's/UA\t\t26/RU\t\t197/p' "$data_dir/cities5000.txt"
+            sed -i -e 's/UA\t\t11/RU\t\t192/' "$data_dir/cities5000.txt"
+            sed -i -e 's/UA\t\t20/RU\t\t193/' "$data_dir/cities5000.txt"
+            sed -i -e 's/UA\t\t05/RU\t\t194/' "$data_dir/cities5000.txt"
+            sed -i -e 's/UA\t\t14/RU\t\t195/' "$data_dir/cities5000.txt"
+            sed -i -e 's/UA\t\t08/RU\t\t196/' "$data_dir/cities5000.txt"
+            sed -i -e 's/UA\t\t26/RU\t\t197/' "$data_dir/cities5000.txt"
 
             ${geosuggest}/bin/geosuggest-build-index from-files \
               --cities="$data_dir/cities5000.txt" \

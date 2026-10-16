@@ -2,9 +2,9 @@ use geosuggest_core::{Engine, index::ArchivedCitiesRecord};
 use topcoat::{
     Result,
     context::{Cx, app_context},
-    router::{Method, PageFn, page},
+    router::page,
     runtime::{Event, Signal, shard, signal},
-    view::{BoxView, Component, View, view},
+    view::{View, view},
 };
 
 const STYLE: topcoat::asset::Asset = topcoat::asset::asset!("style.css");
@@ -17,18 +17,6 @@ pub fn bundle_assets() -> [topcoat::asset::Asset; 3] {
 #[derive(Clone)]
 pub struct EngineContext {
     pub engine: &'static Engine<'static>,
-    pub url_path_prefix: String,
-}
-
-fn route_with_prefix(prefix: &str, path: &str) -> String {
-    let prefix = prefix.trim_matches('/');
-    if prefix.is_empty() {
-        path.to_owned()
-    } else if path == "/" {
-        format!("/{prefix}")
-    } else {
-        format!("/{prefix}{path}")
-    }
 }
 
 type CityView = (u32, String, String, f32, f32, u32, String);
@@ -58,9 +46,6 @@ fn city_view(engine: &Engine<'_>, city: &ArchivedCitiesRecord, lang: &str) -> Ci
 
 #[page("/")]
 pub async fn home_page(cx: &Cx) -> Result<impl View> {
-    let app = app_context::<EngineContext>(cx);
-    let swagger_url = route_with_prefix(&app.url_path_prefix, "/swagger");
-    let redoc_url = route_with_prefix(&app.url_path_prefix, "/redoc");
     let query = signal(cx, String::new);
     let language = signal(cx, || "en".to_owned());
     let latitude = signal(cx, String::new);
@@ -153,9 +138,9 @@ pub async fn home_page(cx: &Cx) -> Result<impl View> {
                         <footer class="sidebar-footer">
                             <div>
                                 <strong>"API:"</strong>
-                                <a href=(swagger_url)>"Swagger"</a>
+                                <a href="/swagger">"Swagger"</a>
                                 <span>"/"</span>
-                                <a href=(redoc_url)>"ReDoc"</a>
+                                <a href="/redoc">"ReDoc"</a>
                             </div>
                             <div>
                                 <strong>"GitHub:"</strong>
@@ -329,19 +314,4 @@ pub async fn city_detail(cx: &Cx, city_id: u32, lang: String) -> Result<impl Vie
             <p class="hint">"Select a city result to view its details."</p>
         }
     })
-}
-
-pub fn home_page_at(path: String) -> PageFn {
-    let path: &'static str = Box::leak(path.into_boxed_str());
-    PageFn::new(Method::GET, path, render_home_page)
-}
-
-fn render_home_page<'a>(cx: &'a Cx, body: topcoat::router::Body) -> BoxView<'a> {
-    Box::pin(topcoat::view::HoistView::new(
-        topcoat::view::internal::ThenView::new(async move {
-            drop(body);
-            let props = <home_page as Component>::props_builder().build();
-            <home_page as Component>::render(home_page, cx, props).await
-        }),
-    ))
 }
