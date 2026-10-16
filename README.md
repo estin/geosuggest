@@ -21,7 +21,7 @@ Main features:
  - [kiddo](https://crates.io/crates/kiddo)
  - [geoip2](https://crates.io/crates/geoip2)
  - [rkyv](https://crates.io/crates/rkyv)
- - [ntex](https://crates.io/crates/ntex)
+ - [topcoat](https://crates.io/crates/topcoat)
 
 
 ## Library
@@ -115,24 +115,36 @@ $ cd geosuggest
 $ cargo build --release
 ```
 
-Build index file
+The default build serves only the HTTP API. The `demo` feature adds a page
+rendered by the server, plus Swagger and ReDoc. `just run` enables this feature
+and bundles the browser assets. The demo page is served only when
+`url_path_prefix` is `/`. The `static_dir` setting also needs this feature.
+
+Run the server, demo, Swagger page, and ReDoc page with one command.
 
 ```console
-$ cargo run -p geosuggest-utils --bin geosuggest-build-index --release --features=cli,tracing -- \
-    from-urls \
-    --languages=ru,uk,be,zh,ja \
-    --output=/tmp/geosuggest-index.rkyv
+$ just run
 ```
 
-Run
+The command builds the index when it is missing. To rebuild it, run:
 
 ```console
-$ GEOSUGGEST__INDEX_FILE=/tmp/geosuggest-index.rkyv \
-    GEOSUGGEST__HOST=127.0.0.1 \
-    GEOSUGGEST__PORT=8080 \
-    GEOSUGGEST__URL_PATH_PREFIX="/" \
-    cargo run -p geosuggest --bin geosuggest --release
+$ just rebuild-index
 ```
+
+Build the demo image with Nix, then load it into Docker:
+
+```console
+$ nix build --impure .#demo-image
+$ docker load < result
+$ docker run --rm -p 8000:8000 geosuggest-demo:latest
+```
+
+The flake fetches the current GeoNames files without hash checks because those
+files change in place. The `--impure` flag enables these unhashed downloads.
+
+Nix builds the server, bundles the Topcoat assets, and creates the search index
+inside the image. Docker is only needed to load and run the image.
 
 Check
 
@@ -167,7 +179,7 @@ $ curl -s "http://127.0.0.1:8080/api/city/suggest?pattern=Voronezh&limit=1" | jq
 }
 ```
 
-See also demo [Dockerfile](https://github.com/estin/geosuggest/blob/master/geosuggest-demo/Dockerfile)
+Run the server with `just run` to serve the demo, Swagger, and ReDoc pages.
 
 
 ## License

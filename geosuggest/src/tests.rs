@@ -1,17 +1,34 @@
-use geosuggest_core::{
-    index::{IndexData, SourceFileOptions},
-    EngineData,
+use std::boxed::Box;
+
+#[cfg(feature = "demo")]
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(feature = "geoip2")]
+use std::net::SocketAddr;
+
+use bonfig::FromSource as _;
+use geosuggest_core::{index::SourceFileOptions, EngineData};
+use topcoat::router::{
+    header, request::Request, response::Response, to_bytes, Body, Router, StatusCode,
 };
-use ntex::web::{test, App, ServiceConfig};
-use ntex::{http, web};
 
-type Error = Box<dyn std::error::Error>;
+#[cfg(feature = "geoip2")]
+use topcoat::router::RemoteAddr;
 
-use super::AppState;
-use std::sync::Arc;
+#[cfg(feature = "swagger")]
+use super::generate_openapi_files;
+use super::{build_router_with_assets, settings::Settings, AppState, DemoAssetConfig};
 
-fn build_test_state() -> AppState {
-    let data = IndexData::new_from_files(SourceFileOptions {
+fn build_test_router(settings: Settings) -> Router {
+    #[cfg(feature = "demo")]
+    let assets = None;
+    #[cfg(not(feature = "demo"))]
+    let assets = ();
+    build_test_router_with_assets(settings, assets)
+}
+
+fn build_test_router_with_assets(settings: Settings, assets: DemoAssetConfig) -> Router {
+    let data = geosuggest_core::index::IndexData::new_from_files(SourceFileOptions {
         cities: "../geosuggest-core/tests/misc/cities.txt",
         names: Some("../geosuggest-core/tests/misc/names.txt"),
         countries: Some("../geosuggest-core/tests/misc/country-info.txt"),
@@ -22,520 +39,292 @@ fn build_test_state() -> AppState {
     })
     .unwrap();
 
-    let mut engine_data = EngineData::try_from(data).unwrap();
-
+    let engine_data = EngineData::try_from(data).unwrap();
+    #[cfg(feature = "geoip2")]
+    let mut engine_data = engine_data;
     #[cfg(feature = "geoip2")]
     engine_data
         .load_geoip2("../geosuggest-core/tests/misc/GeoLite2-City-Test.mmdb")
         .unwrap();
 
-    // build static engine
-    let engine_data = Box::new(engine_data);
-    let engine_data = Box::leak(engine_data);
-    let engine = engine_data
-        .as_engine()
-        .expect("Failed to initialize engine");
-    let engine = Box::new(engine);
-    let static_engine = Box::leak(engine);
-    let shared_engine = Arc::new(static_engine);
-
-    AppState::new(shared_engine)
-}
-
-fn app_config(cfg: &mut ServiceConfig<AppState, ()>) {
-    cfg.service((
-        web::resource("/get").to_with_state(super::city_get),
-        web::resource("/capital").to_with_state(super::capital),
-        web::resource("/suggest").to_with_state(super::suggest),
-        web::resource("/reverse").to_with_state(super::reverse),
-        #[cfg(feature = "geoip2")]
-        web::resource("/geoip2").to_with_state(super::geoip2),
+    let engine_data = Box::leak(Box::new(engine_data));
+    let engine = Box::leak(Box::new(
+        engine_data.as_engine().expect("test engine initializes"),
     ));
-}
-
-macro_rules! test_app {
-    () => {
-        test::init_service_st(build_test_state(), App::new().configure(app_config)).await
+    let app_state = AppState {
+        engine,
+        settings: settings.clone(),
     };
+
+    build_router_with_assets(app_state, &settings, assets)
 }
 
-#[test_log::test(ntex::test)]
-async fn api_get() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get().uri("/get?id=472045").to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city");
-    assert!(city.is_some());
-    let city = city.unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Voronezh");
-
-    Ok(())
+fn settings(prefix: &str, static_dir: Option<&str>) -> Settings {
+    let mut source = format!("url_path_prefix = {prefix:?}");
+    if let Some(static_dir) = static_dir {
+        source.push_str(&format!("\nstatic_dir = {static_dir:?}"));
+    }
+    Settings::from_toml(&source).unwrap()
 }
 
-#[test_log::test(ntex::test)]
-async fn api_capital_country_code() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/capital?country_code=RU")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city");
-    assert!(city.is_some());
-    let city = city.unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Moscow");
-
-    Ok(())
+fn request(uri: &str) -> Request<Body> {
+    Request::builder().uri(uri).body(Body::empty()).unwrap()
 }
 
-#[test_log::test(ntex::test)]
-async fn api_capital_coordinates() -> Result<(), Error> {
-    let app = test_app!();
+async fn response_body(response: Response) -> Vec<u8> {
+    to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .to_vec()
+}
 
-    let req = test::TestRequest::get()
-        .uri("/capital?lat=55.7558&lng=37.6173&country_code=GB")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
+#[tokio::test]
+async fn api_routes_use_the_configured_prefix() {
+    let app = build_test_router(settings("/geosuggest", None));
 
-    assert_eq!(resp.status(), http::StatusCode::OK);
+    let response = app
+        .handle(request("/geosuggest/api/city/get?id=472045"))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["city"]["name"], "Voronezh");
 
-    let bytes = test::read_body(resp).await;
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city").unwrap().as_object().unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Moscow");
+    let response = app.handle(request("/api/city/get?id=472045")).await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
 
-    Ok(())
+#[tokio::test]
+async fn capital_suggest_and_reverse_routes_keep_their_results() {
+    let app = build_test_router(settings("/", None));
+
+    let response = app
+        .handle(request("/api/city/capital?country_code=RU"))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["city"]["name"], "Moscow");
+
+    let response = app
+        .handle(request(
+            "/api/city/capital?lat=55.7558&lng=37.6173&country_code=GB",
+        ))
+        .await;
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["city"]["name"], "Moscow");
+
+    let response = app
+        .handle(request(
+            "/api/city/suggest?pattern=Voronezh&countries=RU,JP&lang=ru&limit=1",
+        ))
+        .await;
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["items"][0]["name"], "Воронеж");
+
+    let response = app
+        .handle(request(
+            "/api/city/reverse?lat=51.6372&lng=39.1937&limit=1&lang=ru",
+        ))
+        .await;
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["items"][0]["city"]["name"], "Воронеж");
+}
+
+#[cfg(feature = "swagger")]
+#[tokio::test]
+async fn docs_routes_serve_openapi_swagger_and_redoc() {
+    let settings = settings("/geosuggest", None);
+    generate_openapi_files(&settings).unwrap();
+    let app = build_test_router(settings);
+
+    let response = app.handle(request("/geosuggest/openapi3.yaml")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(String::from_utf8(response_body(response).await)
+        .unwrap()
+        .contains("/geosuggest"));
+
+    for path in ["/geosuggest/swagger", "/geosuggest/redoc"] {
+        let response = app.handle(request(path)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "text/html; charset=utf-8"
+        );
+    }
+}
+
+#[cfg(feature = "demo")]
+#[tokio::test]
+async fn root_serves_static_html_with_an_html_content_type() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let static_dir = std::env::temp_dir().join(format!("geosuggest-static-{unique}"));
+    std::fs::create_dir_all(&static_dir).unwrap();
+    std::fs::write(static_dir.join("index.html"), "<html>static index</html>").unwrap();
+
+    let app = build_test_router(settings("/geosuggest", Some(static_dir.to_str().unwrap())));
+    let response = app.handle(request("/geosuggest")).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(response_body(response).await, b"<html>static index</html>");
+
+    let response = app
+        .handle(request("/geosuggest/api/city/get?id=472045"))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    std::fs::remove_dir_all(static_dir).unwrap();
+}
+
+#[cfg(feature = "demo")]
+#[tokio::test]
+async fn demo_page_renders_topcoat_shards_on_the_server() {
+    let assets = geosuggest_demo::bundle_assets()
+        .into_iter()
+        .enumerate()
+        .map(|(index, asset)| topcoat::asset::ManifestEntry {
+            id: asset.id(),
+            file: format!("asset-{index}.bin"),
+            hash: format!("test-{index}"),
+            content_type: "application/octet-stream".to_owned(),
+        })
+        .collect();
+    let assets = topcoat::asset::AssetConfig::hosted_at(
+        "/test-assets",
+        topcoat::asset::Manifest { version: 1, assets },
+    );
+    let app = build_test_router_with_assets(settings("/", None), Some(assets));
+    let response = app.handle(request("/")).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "text/html; charset=utf-8"
+    );
+
+    let html = String::from_utf8(response_body(response).await).unwrap();
+    assert!(html.contains("<title>GEOSUGGEST</title>"));
+    assert!(html.contains("Search results will appear here."));
+    assert!(html.contains("Nearby cities will appear here."));
+    assert!(html.contains("Select a city result to view its details."));
+    assert!(html.contains("::topcoat::shard::start(\"/_geosuggest/suggest\""));
+    assert!(html.contains("::topcoat::shard::start(\"/_geosuggest/reverse\""));
+    assert!(html.contains("::topcoat::shard::start(\"/_geosuggest/city\""));
+    assert!(html.contains("/test-assets/"));
+    assert!(!html.contains("/api/city/"));
+}
+
+#[cfg(feature = "demo")]
+#[tokio::test]
+async fn demo_page_is_not_served_under_a_prefix() {
+    let app = build_test_router(settings("/geosuggest", None));
+
+    for path in ["/", "/geosuggest"] {
+        let response = app.handle(request(path)).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+    let response = app
+        .handle(request("/geosuggest/api/city/get?id=472045"))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[cfg(not(any(feature = "demo", feature = "swagger")))]
+#[tokio::test]
+async fn api_only_build_does_not_register_ui_routes() {
+    let app = build_test_router(settings("/", None));
+
+    for path in ["/", "/swagger", "/redoc", "/openapi3.yaml"] {
+        let response = app.handle(request(path)).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn cors_allows_browser_get_and_preflight_requests() {
+    let app = build_test_router(settings("/", None));
+
+    let response = app
+        .handle(
+            Request::builder()
+                .uri("/api/city/get?id=472045")
+                .header(header::ORIGIN, "https://client.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .unwrap(),
+        "https://client.example"
+    );
+
+    let response = app
+        .handle(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/api/city/get")
+                .header(header::ORIGIN, "https://client.example")
+                .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "x-client")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_METHODS)
+            .unwrap(),
+        "GET"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_HEADERS)
+            .unwrap(),
+        "x-client"
+    );
 }
 
 #[cfg(feature = "geoip2")]
-#[test_log::test(ntex::test)]
-async fn api_capital_ip() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/capital?ip=81.2.69.142&country_code=RU")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city").unwrap().as_object().unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "London");
-
-    Ok(())
-}
-
-#[cfg(feature = "geoip2")]
-#[test_log::test(ntex::test)]
-async fn api_capital_ip_client() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/capital?ip=client&country_code=RU")
-        .header(ntex::http::header::FORWARDED, "81.2.69.142")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city").unwrap().as_object().unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "London");
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_get_lang() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/get?id=472045&lang=ru")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city");
-    assert!(city.is_some());
-    let city = city.unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Воронеж");
-
-    assert_eq!(
-        city.get("country")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Россия"
-    );
-    assert_eq!(
-        city.get("admin_division")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Воронежская область"
-    );
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_suggest() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/suggest?pattern=Voronezh&countries=RU,JP")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert!(!items.is_empty());
-    assert_eq!(items[0].get("name").unwrap().as_str().unwrap(), "Voronezh");
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_suggest_lang() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/suggest?pattern=Voronezh&lang=ru&limit=1")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert!(!items.is_empty());
-    assert_eq!(items[0].get("name").unwrap().as_str().unwrap(), "Воронеж");
-    assert_eq!(
-        items[0]
-            .get("country")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Россия"
-    );
-    assert_eq!(
-        items[0]
-            .get("admin_division")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Воронежская область"
-    );
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_reverse() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/reverse?lat=51.6372&lng=39.1937&limit=1&countries=RU,JP")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(
-        items[0]
-            .get("city")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Voronezh"
-    );
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_reverse_lang() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/reverse?lat=51.6372&lng=39.1937&lang=ru&limit=1")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(
-        items[0]
-            .get("city")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Воронеж"
-    );
-    assert_eq!(
-        items[0]
-            .get("city")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("country")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Россия"
-    );
-    assert_eq!(
-        items[0]
-            .get("city")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("admin_division")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Воронежская область"
-    );
-
-    Ok(())
-}
-
-#[cfg(feature = "geoip2")]
-#[test_log::test(ntex::test)]
-async fn api_geoip2_lang() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/geoip2?ip=81.2.69.142&lang=ru")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let city = result.get("city").unwrap().as_object().unwrap();
-    assert_eq!(city.get("name").unwrap().as_str().unwrap(), "Лондон");
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_suggest_admin2_lang() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/suggest?pattern=Beverley&lang=ru&limit=1")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert!(!items.is_empty());
-    assert_eq!(items[0].get("name").unwrap().as_str().unwrap(), "Beverley");
-    assert_eq!(
-        items[0]
-            .get("admin2_division")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Ист-Райдинг-оф-Йоркшир"
-    );
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_reverse_admin2_lang() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/reverse?lat=53.84587&lng=-0.42332&lang=ru&limit=1")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(
-        items[0]
-            .get("city")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Beverley"
-    );
-    assert_eq!(
-        items[0]
-            .get("city")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("admin2_division")
-            .unwrap()
-            .as_object()
-            .unwrap()
-            .get("name")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "Ист-Райдинг-оф-Йоркшир"
-    );
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_suggest_filter_by_countries() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/suggest?pattern=Voronezh&countries=JP,KR")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert!(items.is_empty());
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_reverse_filter_by_countries() -> Result<(), Error> {
-    let app = test_app!();
-
-    let req = test::TestRequest::get()
-        .uri("/reverse?lat=51.6372&lng=39.1937&limit=1&countries=JP,KR")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let bytes = test::read_body(resp).await;
-
-    let result: serde_json::Value = serde_json::from_slice(bytes.as_ref())?;
-    let items = result.get("items").unwrap().as_array().unwrap();
-    assert!(items.is_empty());
-
-    Ok(())
-}
-
-#[test_log::test(ntex::test)]
-async fn api_not_shadowed_by_static_dir() -> Result<(), Error> {
-    use bonfig::FromSource as _;
-
-    let static_dir = std::env::temp_dir().join("geosuggest-test-static");
-    std::fs::create_dir_all(&static_dir)?;
-    std::fs::write(static_dir.join("index.html"), "static index")?;
-    let settings =
-        super::settings::Settings::from_toml(&format!("static_dir = '{}'", static_dir.display()))?;
-
-    let app = test::init_service_st(
-        build_test_state(),
-        App::new().configure(move |cfg| super::routes(cfg, &settings)),
-    )
-    .await;
-
-    let req = test::TestRequest::get()
-        .uri("/api/city/get?id=472045")
-        .to_request();
-    let resp = app.call(req).await.unwrap();
-    assert_eq!(resp.status(), http::StatusCode::OK);
-
-    let req = test::TestRequest::get().uri("/").to_request();
-    let resp = app.call(req).await.unwrap();
-    assert_eq!(resp.status(), http::StatusCode::OK);
-    assert_eq!(test::read_body(resp).await.as_ref(), b"static index");
-
-    Ok(())
+#[tokio::test]
+async fn geoip_uses_the_peer_address_when_no_ip_is_given() {
+    let app = build_test_router(settings("/", None));
+    let peer: SocketAddr = "81.2.69.142:4242".parse().unwrap();
+    let response = app
+        .handle(
+            Request::builder()
+                .uri("/api/city/geoip2?lang=ru")
+                .extension(RemoteAddr(peer))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["for_ip"], "81.2.69.142");
+    assert_eq!(result["city"]["name"], "Лондон");
+
+    let response = app
+        .handle(
+            Request::builder()
+                .uri("/api/city/geoip2?ip=client&lang=ru")
+                .header(header::FORWARDED, "81.2.69.142")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["city"]["name"], "Лондон");
 }

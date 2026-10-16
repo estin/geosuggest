@@ -1,6 +1,5 @@
 FROM rust:1.99-slim-bookworm
 
-ARG GEOSUGGEST_BASE_API_URL=$GEOSUGGEST_BASE_API_URL
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
 ARG GEOSUGGEST_INDEX=geosuggest-index.rkyv
 ARG CITIES=cities5000
@@ -14,7 +13,13 @@ RUN cd /root \
     && unzip geosuggest-release.zip \
     && mv geosuggest-$GEOSUGGEST_RELEASE geosuggest-release \
     && cd geosuggest-release \
-    && cargo build --release --features=tokio,cli
+    && cargo build --release --bin geosuggest --features=tokio,geoip2,tracing,demo \
+    && cargo build --release -p geosuggest-utils --bin geosuggest-build-index --features=cli,tracing
+
+# Topcoat browser runtime
+RUN cargo install topcoat-cli --locked \
+    && cd /root/geosuggest-release \
+    && cargo-topcoat asset bundle --release --package geosuggest-demo --bin geosuggest-demo-assets
 
 # index
 RUN cd /tmp \
@@ -27,12 +32,12 @@ RUN cd /tmp \
     && unzip alternateNamesV2.zip
 
 # fix new Russian regions
-RUN sed -ie "s/UA\t\t11/RU\t\t192/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t20/RU\t\t193/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t05/RU\t\t194/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t14/RU\t\t195/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t08/RU\t\t196/p" /tmp/$CITIES.txt
-RUN sed -ie "s/UA\t\t26/RU\t\t197/p" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t11/RU\t\t192/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t20/RU\t\t193/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t05/RU\t\t194/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t14/RU\t\t195/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t08/RU\t\t196/" /tmp/$CITIES.txt
+RUN sed -i -e "s/UA\t\t26/RU\t\t197/" /tmp/$CITIES.txt
 
 RUN ls /tmp
 RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
@@ -44,32 +49,25 @@ RUN /root/geosuggest-release/target/release/geosuggest-build-index from-files \
     --languages=ru,uk,be,zh,ja \
     --output=/opt/$GEOSUGGEST_INDEX
 
-# demo ui
-RUN cargo install wasm-bindgen-cli
-RUN cargo install trunk --locked
-RUN rustup target add wasm32-unknown-unknown
-RUN cd /root/geosuggest-release/geosuggest-demo \
-    && trunk build --release -d /root/geosuggest-demo-release
-
 # final stage
 FROM debian:bookworm-slim
 
-ARG PORT=$PORT
+ARG PORT=8000
 ARG GEOSUGGEST_INDEX=geosuggest-index.rkyv
 
 COPY --from=0 /root/geosuggest-release/target/release/geosuggest /usr/bin
-COPY --from=0 /root/geosuggest-demo-release /opt/geosuggest-static
+COPY --from=0 /root/geosuggest-release/target/release/assets /usr/bin/assets
 COPY --from=0 /opt/$GEOSUGGEST_INDEX /opt/$GEOSUGGEST_INDEX
 
 # default configuration
 EXPOSE $PORT
 ENV GEOSUGGEST_CONFIG_FILE="/opt/geosuggest-settings.toml"
+ENV PORT=$PORT
 ENV RUST_LOG=geosuggest=trace
 
 RUN echo "host = '0.0.0.0'" >> /opt/geosuggest-settings.toml \
     && echo "port = 8000 # see GEOSUGGEST_PORT" >> /opt/geosuggest-settings.toml \
     && echo "index_file = '/opt/$GEOSUGGEST_INDEX'" >> /opt/geosuggest-settings.toml \
-    && echo "static_dir = '/opt/geosuggest-static'" >> /opt/geosuggest-settings.toml \
     && echo "url_path_prefix = '/'" >> /opt/geosuggest-settings.toml
 
 # pass $PORT to $GEOSUGGEST_PORT

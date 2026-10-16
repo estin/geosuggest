@@ -1,23 +1,36 @@
 use std::boxed::Box;
-use std::sync::Arc;
+#[cfg(feature = "geoip2")]
+use std::net::IpAddr;
+#[cfg(feature = "geoip2")]
+use std::str::FromStr;
 use std::time::Instant;
 
 #[cfg(feature = "tracing")]
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[cfg(feature = "geoip2")]
-use std::net::IpAddr;
-#[cfg(feature = "geoip2")]
-use std::str::FromStr;
-
-use ntex::web::{self, middleware, App, HttpRequest, HttpResponse};
-use ntex_cors::Cors;
-use ntex_files as fs;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "demo")]
+use topcoat::asset::{AssetBundle, AssetConfig, RouterBuilderAssetExt};
+#[cfg(any(feature = "demo", feature = "swagger"))]
+use topcoat::router::content::Html;
+#[cfg(feature = "demo")]
+use topcoat::router::RouterBuilderDirectoryExt;
+#[cfg(feature = "demo")]
+use topcoat::runtime::RouterBuilderRuntimeExt;
+use topcoat::{
+    context::{app_context, Cx},
+    router::{
+        self,
+        response::{IntoResponse, Response},
+        Body, LayerFn, LayerFuture, Method, Next, PathBuf as RouterPathBuf, PathSegment, RouteFn,
+        RouteFuture, Router, StatusCode,
+    },
+    Result,
+};
 
 use geosuggest_core::{index::ArchivedCitiesRecord, storage, Engine};
 
-// openapi3
+#[cfg(feature = "swagger")]
 use oaph::{
     schemars::{self, JsonSchema},
     OpenApiPlaceHolder,
@@ -27,38 +40,19 @@ mod settings;
 
 const DEFAULT_K: f32 = 0.000000005;
 const DEFAULT_NEAREST_CITIES_LIMIT: usize = 10;
+#[cfg(feature = "swagger")]
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub struct StaticEngine(Engine<'static>);
-
-impl std::ops::Deref for StaticEngine {
-    type Target = Engine<'static>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub type SharedEngine = Arc<&'static mut Engine<'static>>;
-
-/// Application state for ntex handlers. ntex requires stateful handlers to
-/// take `(&AppState, _request_state: (), ...extractors)`: the middle argument
-/// is the unused per-request state that `HandlerSt` always passes.
-pub type AppState = web::AppState<SharedEngine>;
+pub type SharedEngine = &'static Engine<'static>;
 
 #[derive(Clone)]
-struct AppConfig {
-    engine: SharedEngine,
+pub struct AppState {
+    pub engine: SharedEngine,
+    pub settings: settings::Settings,
 }
 
-impl ntex::server::ServerAppConfig for AppConfig {
-    type State = AppState;
-
-    async fn create(&self) -> std::io::Result<AppState> {
-        Ok(web::AppState::new(self.engine.clone()))
-    }
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GetCityQuery {
     /// geonameid of the City
     id: u32,
@@ -66,11 +60,12 @@ pub struct GetCityQuery {
     lang: Option<String>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GetCapitalQuery {
     lat: Option<f32>,
     lng: Option<f32>,
-    /// IP to check, if not declared then `Forwarded` header will used or peer ip as last chance
+    /// IP to check, if not declared then `Forwarded` header or peer IP will be used
     #[cfg(feature = "geoip2")]
     ip: Option<String>,
     /// geonameid of the City
@@ -106,13 +101,12 @@ impl GetCapitalQuery {
     }
 }
 
-// TODO self.countries.split(",").as_slice()
-// https://github.com/rust-lang/rust/issues/96137
 fn get_countries_filter(countries: &Option<String>) -> Option<Vec<&str>> {
     countries.as_deref().map(|c| c.split(',').collect())
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct SuggestQuery {
     pattern: String,
     limit: Option<usize>,
@@ -124,7 +118,8 @@ pub struct SuggestQuery {
     countries: Option<String>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct ReverseQuery {
     lat: f32,
     lng: f32,
@@ -142,7 +137,8 @@ pub struct ReverseQuery {
 }
 
 #[cfg(feature = "geoip2")]
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GeoIP2Query {
     /// IP to check, if not declared then `Forwarded` header will used or peer ip as last chance
     ip: Option<String>,
@@ -150,56 +146,64 @@ pub struct GeoIP2Query {
     lang: Option<String>,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GetCityResult<'a> {
     city: Option<CityResultItem<'a>>,
     /// elapsed time in ms
     time: usize,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GetCapitalResult<'a> {
     city: Option<CityResultItem<'a>>,
     /// elapsed time in ms
     time: usize,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct SuggestResult<'a> {
     items: Vec<CityResultItem<'a>>,
     /// elapsed time in ms
     time: usize,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct ReverseResult<'a> {
     items: Vec<ReverseResultItem<'a>>,
     /// elapsed time in ms
     time: usize,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct ReverseResultItem<'a> {
     city: CityResultItem<'a>,
     distance: f32,
     score: f32,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct CountryItem<'a> {
     id: u32,
     code: &'a str,
     name: &'a str,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct AdminDivisionItem<'a> {
     id: u32,
     code: &'a str,
     name: &'a str,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct CityResultItem<'a> {
     id: u32,
     name: &'a str,
@@ -213,7 +217,8 @@ pub struct CityResultItem<'a> {
 }
 
 #[cfg(feature = "geoip2")]
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize)]
+#[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GeoIP2Result<'a> {
     city: Option<CityResultItem<'a>>,
     for_ip: String,
@@ -222,10 +227,10 @@ pub struct GeoIP2Result<'a> {
 }
 
 impl<'a> CityResultItem<'a> {
-    pub fn from_city(
+    pub fn from_city<'b>(
         engine: &'a Engine<'a>,
         item: &'a ArchivedCitiesRecord,
-        lang: Option<&'a str>,
+        lang: Option<&'b str>,
     ) -> Self {
         let name = match (lang, item.names.as_ref()) {
             (Some(lang), Some(names)) => names.get(lang).unwrap_or(&item.name),
@@ -298,52 +303,30 @@ impl<'a> CityResultItem<'a> {
     }
 }
 
-pub async fn city_get(
-    engine: &AppState,
-    _request_state: (),
-    web::types::Query(query): web::types::Query<GetCityQuery>,
-    _req: HttpRequest,
-) -> HttpResponse {
-    let now = Instant::now();
-
-    let city = engine
-        .get(&query.id)
-        .map(|city| CityResultItem::from_city(engine, city, query.lang.as_deref()));
-
-    HttpResponse::Ok().json(&GetCityResult {
-        time: now.elapsed().as_millis() as usize,
-        city,
-    })
-}
-
 #[cfg(feature = "geoip2")]
-fn extract_ip_addr(ip_param: Option<&str>, req: &HttpRequest) -> Result<IpAddr, String> {
-    let conn_info = req.connection_info();
+fn extract_ip_addr(ip_param: Option<&str>, cx: &Cx) -> Result<IpAddr, String> {
+    let parts = router::request::parts(cx);
+    let headers = &parts.headers;
     ip_param
         .filter(|ip| *ip != "client")
         .or_else(|| {
-            req.headers()
-                .get(ntex::http::header::FORWARDED)
+            headers
+                .get(topcoat::router::header::FORWARDED)
                 .and_then(|val| val.to_str().ok())
-        })
-        .or_else(|| {
-            conn_info
-                .remote()
-                .and_then(|remote| remote.split(':').take(1).next())
         })
         .map(|ip_str| {
             IpAddr::from_str(ip_str)
                 .map_err(|err| format!("Invalid ip addr: {ip_str} error: {err}"))
         })
-        .or_else(|| req.peer_addr().map(|addr| Ok(addr.ip())))
+        .or_else(|| router::request::client_ip(cx).map(Ok))
         .ok_or_else(|| "IP address not provided".to_owned())
         .flatten()
 }
 
 fn get_country_code<'a>(
-    engine: &'a SharedEngine,
+    engine: &'a Engine<'a>,
     lookup: GetCapitalLookup<'a>,
-    req: &'a HttpRequest,
+    _cx: &Cx,
 ) -> Result<Option<&'a str>, String> {
     Ok(match lookup {
         GetCapitalLookup::Coords { lat, lng } => engine
@@ -353,8 +336,7 @@ fn get_country_code<'a>(
             .map(|country| country.code.as_str()),
         #[cfg(feature = "geoip2")]
         GetCapitalLookup::Ip(ip) => {
-            let addr = extract_ip_addr(Some(ip), req)?;
-
+            let addr = extract_ip_addr(Some(ip), _cx)?;
             engine
                 .geoip2_lookup(addr)
                 .and_then(|city| engine.city_country(city))
@@ -364,18 +346,34 @@ fn get_country_code<'a>(
     })
 }
 
-pub async fn capital(
-    engine: &AppState,
-    _request_state: (),
-    web::types::Query(query): web::types::Query<GetCapitalQuery>,
-    req: HttpRequest,
-) -> HttpResponse {
+async fn city_get(cx: &Cx) -> Result<router::content::Json<GetCityResult<'static>>> {
+    let app = app_context::<AppState>(cx);
+    let engine = app.engine;
+    let query: GetCityQuery =
+        router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
+    let now = Instant::now();
+
+    let city = engine
+        .get(&query.id)
+        .map(|city| CityResultItem::from_city(engine, city, query.lang.as_deref()));
+
+    Ok(router::content::Json(GetCityResult {
+        time: now.elapsed().as_millis() as usize,
+        city,
+    }))
+}
+
+async fn capital(cx: &Cx) -> Result<router::content::Json<GetCapitalResult<'static>>> {
+    let app = app_context::<AppState>(cx);
+    let engine = app.engine;
+    let query: GetCapitalQuery =
+        router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
     let now = Instant::now();
 
     let mut err = None;
 
     for lookup in query.lookups() {
-        let country_code = match get_country_code(engine, lookup, &req) {
+        let country_code = match get_country_code(engine, lookup, cx) {
             Ok(Some(country_code)) => country_code,
             Ok(None) => continue,
             Err(e) => {
@@ -388,32 +386,31 @@ pub async fn capital(
             continue;
         };
 
-        return HttpResponse::Ok().json(&GetCapitalResult {
+        return Ok(router::content::Json(GetCapitalResult {
             time: now.elapsed().as_millis() as usize,
             city: Some(CityResultItem::from_city(
                 engine,
                 city,
                 query.lang.as_deref(),
             )),
-        });
+        }));
     }
 
     if let Some(err) = err {
-        return HttpResponse::BadRequest().body(err);
+        return Err(router::error::bad_request(err).into());
     }
 
-    HttpResponse::Ok().json(&GetCapitalResult {
+    Ok(router::content::Json(GetCapitalResult {
         time: now.elapsed().as_millis() as usize,
         city: None,
-    })
+    }))
 }
 
-pub async fn suggest(
-    engine: &AppState,
-    _request_state: (),
-    web::types::Query(query): web::types::Query<SuggestQuery>,
-    _req: HttpRequest,
-) -> HttpResponse {
+async fn suggest(cx: &Cx) -> Result<router::content::Json<SuggestResult<'static>>> {
+    let app = app_context::<AppState>(cx);
+    let engine = app.engine;
+    let query: SuggestQuery =
+        router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
     let now = Instant::now();
 
     let result = engine
@@ -424,21 +421,20 @@ pub async fn suggest(
             get_countries_filter(&query.countries).as_deref(),
         )
         .iter()
-        .map(|item| CityResultItem::from_city(engine, item, query.lang.as_deref()))
+        .map(move |item| CityResultItem::from_city(engine, item, query.lang.as_deref()))
         .collect::<Vec<CityResultItem>>();
 
-    HttpResponse::Ok().json(&SuggestResult {
+    Ok(router::content::Json(SuggestResult {
         time: now.elapsed().as_millis() as usize,
         items: result,
-    })
+    }))
 }
 
-pub async fn reverse(
-    engine: &AppState,
-    _request_state: (),
-    web::types::Query(query): web::types::Query<ReverseQuery>,
-    _req: HttpRequest,
-) -> HttpResponse {
+async fn reverse(cx: &Cx) -> Result<router::content::Json<ReverseResult<'static>>> {
+    let app = app_context::<AppState>(cx);
+    let engine = app.engine;
+    let query: ReverseQuery =
+        router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
     let now = Instant::now();
 
     let items = engine
@@ -450,50 +446,83 @@ pub async fn reverse(
         )
         .unwrap_or_default();
 
-    HttpResponse::Ok().json(&ReverseResult {
+    Ok(router::content::Json(ReverseResult {
         time: now.elapsed().as_millis() as usize,
         items: items
             .iter()
             .take(query.limit.unwrap_or(DEFAULT_NEAREST_CITIES_LIMIT))
-            .map(|item| ReverseResultItem {
+            .map(move |item| ReverseResultItem {
                 city: CityResultItem::from_city(engine, item.city, query.lang.as_deref()),
                 distance: item.distance,
                 score: item.score,
             })
             .collect(),
-    })
+    }))
 }
 
 #[cfg(feature = "geoip2")]
-pub async fn geoip2(
-    engine: &AppState,
-    _request_state: (),
-    web::types::Query(query): web::types::Query<GeoIP2Query>,
-    req: HttpRequest,
-) -> HttpResponse {
+async fn geoip2(cx: &Cx) -> Result<router::content::Json<GeoIP2Result<'static>>> {
+    let app = app_context::<AppState>(cx);
+    let engine = app.engine;
+    let query: GeoIP2Query =
+        router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
     let now = Instant::now();
 
-    let addr = match extract_ip_addr(query.ip.as_deref(), &req) {
+    let addr = match extract_ip_addr(query.ip.as_deref(), cx) {
         Ok(addr) => addr,
-        Err(err) => return HttpResponse::BadRequest().body(err),
+        Err(err) => return Err(router::error::bad_request(err).into()),
     };
 
     let result = engine.geoip2_lookup(addr);
 
-    HttpResponse::Ok().json(&GeoIP2Result {
+    Ok(router::content::Json(GeoIP2Result {
         time: now.elapsed().as_millis() as usize,
         for_ip: addr.to_string(),
-        city: result.map(|item| CityResultItem::from_city(engine, item, query.lang.as_deref())),
-    })
+        city: result
+            .map(move |item| CityResultItem::from_city(engine, item, query.lang.as_deref())),
+    }))
 }
 
+#[cfg(feature = "demo")]
+#[derive(Clone)]
+struct StaticIndex(String);
+
+#[cfg(feature = "demo")]
+async fn root_index(cx: &Cx) -> Result<Html<String>> {
+    Ok(Html(app_context::<StaticIndex>(cx).0.clone()))
+}
+
+#[cfg(feature = "swagger")]
+async fn openapi3(_cx: &Cx) -> Result<Response> {
+    let body = std::fs::read(std::env::temp_dir().join("openapi3.yaml"))?;
+    Ok(Response::builder()
+        .header("content-type", "application/yaml")
+        .body(Body::from(body))?)
+}
+
+#[cfg(feature = "swagger")]
+async fn swagger(_cx: &Cx) -> Result<Html<String>> {
+    let body = std::fs::read_to_string(std::env::temp_dir().join("swagger-ui.html"))?;
+    Ok(Html(body))
+}
+
+#[cfg(feature = "swagger")]
+async fn redoc(_cx: &Cx) -> Result<Html<String>> {
+    let body = std::fs::read_to_string(std::env::temp_dir().join("redoc-ui.html"))?;
+    Ok(Html(body))
+}
+
+#[cfg(feature = "swagger")]
 fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn std::error::Error>> {
     let openapi3_yaml_path = std::env::temp_dir().join("openapi3.yaml");
 
-    // render openapi3 yaml to temporary file
     let aoph = OpenApiPlaceHolder::new()
         .substitute("version", VERSION)
-        .substitute("url_path_prefix", &settings.url_path_prefix)
+        .substitute(
+            "url_path_prefix",
+            &join_url_path(&settings.url_path_prefix, "/"),
+        );
+    let aoph = aoph
         .query_params::<GetCityQuery>("GetCityQuery")?
         .query_params::<GetCapitalQuery>("GetCapitalQuery")?
         .query_params::<SuggestQuery>("SuggestQuery")?
@@ -515,22 +544,14 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
     tracing::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
 
     let title = format!("geosuggest v{}", VERSION);
-
-    let openapi3_url_path = std::path::Path::new(&settings.url_path_prefix).join("openapi3.yaml");
-    let openapi3_url_path = openapi3_url_path
-        .to_str()
-        .ok_or("Failed to build openapi3 url")?;
-
-    // render swagger ui html to temporary file
+    let openapi3_url_path = join_url_path(&settings.url_path_prefix, "/openapi3.yaml");
     OpenApiPlaceHolder::swagger_ui_html_to_file(
-        openapi3_url_path,
+        &openapi3_url_path,
         &title,
         std::env::temp_dir().join("swagger-ui.html"),
     )?;
-
-    // render redoc ui html to temporary file
     OpenApiPlaceHolder::redoc_ui_html_to_file(
-        openapi3_url_path,
+        &openapi3_url_path,
         &title,
         std::env::temp_dir().join("redoc-ui.html"),
     )?;
@@ -538,35 +559,228 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
     Ok(())
 }
 
-/// Registers every route. Shared by `main` and the tests so both see the
-/// same route order.
-pub fn routes(cfg: &mut web::ServiceConfig<AppState, ()>, settings: &settings::Settings) {
-    let scope = web::scope(&settings.url_path_prefix).service((
-        // api
-        web::resource("/api/city/get").to_with_state(city_get),
-        web::resource("/api/city/capital").to_with_state(capital),
-        web::resource("/api/city/suggest").to_with_state(suggest),
-        web::resource("/api/city/reverse").to_with_state(reverse),
-        #[cfg(feature = "geoip2")]
-        web::resource("/api/city/geoip2").to_with_state(geoip2),
-        // serve openapi3 yaml and ui from files
-        fs::Files::new("/openapi3.yaml", std::env::temp_dir()).index_file("openapi3.yaml"),
-        fs::Files::new("/swagger", std::env::temp_dir()).index_file("swagger-ui.html"),
-        fs::Files::new("/redoc", std::env::temp_dir()).index_file("redoc-ui.html"),
-    ));
-    // ntex routes match in registration order and `Files` at "/" matches
-    // every path, so static files must come after the api
-    match settings.static_dir.as_ref() {
-        Some(static_dir) => {
-            cfg.service(scope.service(fs::Files::new("/", static_dir).index_file("index.html")))
+fn join_url_path(prefix: &str, path: &str) -> String {
+    let prefix = prefix.trim_matches('/');
+    if prefix.is_empty() {
+        path.to_owned()
+    } else if path == "/" {
+        format!("/{prefix}")
+    } else {
+        format!("/{prefix}{path}")
+    }
+}
+
+fn route_path(prefix: &str, path: &str) -> RouterPathBuf {
+    let joined = join_url_path(prefix, path);
+    let mut route_path = RouterPathBuf::new();
+    for segment in joined.trim_start_matches('/').split('/') {
+        if !segment.is_empty() {
+            route_path += PathSegment::new(segment);
         }
-        None => cfg.service(scope),
+    }
+    route_path
+}
+
+macro_rules! route_adapter {
+    ($adapter:ident, $handler:ident) => {
+        fn $adapter<'cx>(cx: &'cx Cx, _body: Body) -> RouteFuture<'cx> {
+            Box::pin(async move { $handler(cx).await?.into_response(cx) })
+        }
     };
 }
 
-#[ntex::main]
+route_adapter!(city_get_route, city_get);
+route_adapter!(capital_route, capital);
+route_adapter!(suggest_route, suggest);
+route_adapter!(reverse_route, reverse);
+#[cfg(feature = "geoip2")]
+route_adapter!(geoip2_route, geoip2);
+#[cfg(feature = "demo")]
+route_adapter!(root_index_route, root_index);
+#[cfg(feature = "swagger")]
+route_adapter!(swagger_route, swagger);
+#[cfg(feature = "swagger")]
+route_adapter!(redoc_route, redoc);
+#[cfg(feature = "swagger")]
+route_adapter!(openapi3_route, openapi3);
+
+fn cors_layer<'cx>(cx: &'cx Cx, body: Body, next: Next<'cx>) -> LayerFuture<'cx> {
+    Box::pin(async move {
+        use topcoat::router::header::{
+            ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
+            ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS,
+            ACCESS_CONTROL_REQUEST_METHOD, ORIGIN, VARY,
+        };
+        use topcoat::router::response::response_headers;
+
+        let parts = router::request::parts(cx);
+        let origin = parts.headers.get(ORIGIN).cloned();
+        let requested_method = parts.headers.get(ACCESS_CONTROL_REQUEST_METHOD).cloned();
+        let requested_headers = parts.headers.get(ACCESS_CONTROL_REQUEST_HEADERS).cloned();
+        let preflight = parts.method == Method::OPTIONS && requested_method.is_some();
+
+        if let Some(origin) = origin {
+            response_headers(cx).append(ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+            response_headers(cx).append(VARY, "Origin".parse().expect("valid Vary value"));
+        }
+        if let Some(method) = requested_method {
+            response_headers(cx).append(ACCESS_CONTROL_ALLOW_METHODS, method);
+        }
+        if let Some(requested) = requested_headers {
+            response_headers(cx).append(ACCESS_CONTROL_ALLOW_HEADERS, requested);
+            response_headers(cx).append(
+                VARY,
+                "Access-Control-Request-Headers"
+                    .parse()
+                    .expect("valid Vary value"),
+            );
+        }
+
+        if preflight {
+            Ok(Response::builder()
+                .status(StatusCode::NO_CONTENT)
+                .body(Body::empty())?)
+        } else {
+            next.run(cx, body).await
+        }
+    })
+}
+
+#[cfg(feature = "tracing")]
+fn log_layer<'cx>(cx: &'cx Cx, body: Body, next: Next<'cx>) -> LayerFuture<'cx> {
+    Box::pin(async move {
+        let now = Instant::now();
+        let parts = router::request::parts(cx);
+        let (method, uri) = (parts.method.clone(), parts.uri.clone());
+        let response = next.run(cx, body).await;
+        match &response {
+            Ok(response) => tracing::info!(
+                "{method} {uri} {} {:?}",
+                response.status().as_u16(),
+                now.elapsed()
+            ),
+            Err(err) => tracing::warn!("{method} {uri} failed: {err} {:?}", now.elapsed()),
+        }
+        response
+    })
+}
+
+#[cfg(feature = "demo")]
+type DemoAssetConfig = Option<AssetConfig>;
+#[cfg(not(feature = "demo"))]
+type DemoAssetConfig = ();
+
+pub fn build_router(app_state: AppState, settings: &settings::Settings) -> Router {
+    #[cfg(feature = "demo")]
+    let assets = Some(AssetConfig::serve(AssetBundle::load().expect(
+        "Topcoat asset bundle is required when the demo feature is enabled",
+    )));
+    #[cfg(not(feature = "demo"))]
+    let assets = ();
+
+    build_router_with_assets(app_state, settings, assets)
+}
+
+fn build_router_with_assets(
+    app_state: AppState,
+    settings: &settings::Settings,
+    _assets: DemoAssetConfig,
+) -> Router {
+    let prefix = settings.url_path_prefix.trim_matches('/');
+    let mut builder = Router::builder()
+        .route(RouteFn::new(
+            Method::GET,
+            route_path(prefix, "/api/city/get"),
+            city_get_route,
+        ))
+        .route(RouteFn::new(
+            Method::GET,
+            route_path(prefix, "/api/city/capital"),
+            capital_route,
+        ))
+        .route(RouteFn::new(
+            Method::GET,
+            route_path(prefix, "/api/city/suggest"),
+            suggest_route,
+        ))
+        .route(RouteFn::new(
+            Method::GET,
+            route_path(prefix, "/api/city/reverse"),
+            reverse_route,
+        ));
+    #[cfg(feature = "swagger")]
+    {
+        builder = builder
+            .route(RouteFn::new(
+                Method::GET,
+                route_path(prefix, "/openapi3.yaml"),
+                openapi3_route,
+            ))
+            .route(RouteFn::new(
+                Method::GET,
+                route_path(prefix, "/swagger"),
+                swagger_route,
+            ))
+            .route(RouteFn::new(
+                Method::GET,
+                route_path(prefix, "/redoc"),
+                redoc_route,
+            ));
+    }
+    #[cfg(feature = "demo")]
+    {
+        if let Some(dir) = settings.static_dir.clone() {
+            let index = std::fs::read_to_string(std::path::Path::new(&dir).join("index.html"))
+                .unwrap_or_else(|_| "geosuggest".to_owned());
+            builder = builder
+                .route(RouteFn::new(
+                    Method::GET,
+                    route_path(prefix, "/"),
+                    root_index_route,
+                ))
+                .serve_dir(route_path(prefix, "/{*file}"), dir)
+                .app_context(StaticIndex(index));
+        } else if prefix.is_empty() {
+            builder = builder
+                .page(geosuggest_demo::home_page)
+                .route(geosuggest_demo::suggest_results)
+                .route(geosuggest_demo::reverse_results)
+                .route(geosuggest_demo::city_detail);
+        } else {
+            // Topcoat fixes shard URLs at compile time, so they cannot follow the prefix.
+            #[cfg(feature = "tracing")]
+            tracing::warn!("The demo page is served only when url_path_prefix is \"/\"");
+        }
+    }
+    #[cfg(feature = "geoip2")]
+    {
+        builder = builder.route(RouteFn::new(
+            Method::GET,
+            route_path(prefix, "/api/city/geoip2"),
+            geoip2_route,
+        ));
+    }
+    builder = builder.layer(LayerFn::new(None::<&str>, cors_layer));
+    #[cfg(feature = "tracing")]
+    {
+        builder = builder.layer(LayerFn::new(None::<&str>, log_layer));
+    }
+    #[cfg(feature = "demo")]
+    {
+        let engine_context = geosuggest_demo::EngineContext {
+            engine: app_state.engine,
+        };
+        builder = builder.runtime().app_context(engine_context);
+        if let Some(assets) = _assets {
+            builder = builder.assets(assets);
+        }
+    }
+    builder = builder.app_context(app_state);
+    builder.build()
+}
+
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
-    // logging
     #[cfg(feature = "tracing")]
     {
         let subscriber = tracing_subscriber::registry()
@@ -581,19 +795,25 @@ async fn main() -> std::io::Result<()> {
     #[cfg(feature = "tracing")]
     tracing::info!("Settings are:\n{:#?}", settings);
 
-    // generate files for openapi3.yaml and swagger ui
+    #[cfg(feature = "swagger")]
     generate_openapi_files(&settings).expect("On generate openapi3 files");
 
     if settings.index_file.is_empty() {
         panic!("Please set `index_file`");
     }
+    #[cfg(not(feature = "demo"))]
+    if settings.static_dir.is_some() {
+        panic!("`static_dir` needs the `demo` feature");
+    }
 
     let storage = storage::Storage::new();
 
-    let mut engine_data = storage
+    let engine_data = storage
         .load_from(&settings.index_file)
         .unwrap_or_else(|e| panic!("On build engine from file: {} - {}", settings.index_file, e));
 
+    #[cfg(feature = "geoip2")]
+    let mut engine_data = engine_data;
     #[cfg(feature = "geoip2")]
     if let Some(geoip2_file) = settings.geoip2_file.as_ref() {
         engine_data
@@ -601,40 +821,28 @@ async fn main() -> std::io::Result<()> {
             .unwrap_or_else(|_| panic!("On read geoip2 file from {}", geoip2_file));
     }
 
-    // build static engine
     let engine_data = Box::new(engine_data);
     let engine_data = Box::leak(engine_data);
     let engine = engine_data
         .as_engine()
         .expect("Failed to initialize engine");
     let engine = Box::new(engine);
-    let static_engine = Box::leak(engine);
-    let shared_engine = Arc::new(static_engine);
-    let shared_engine_clone = shared_engine.clone();
+    let static_engine: &'static Engine<'static> = Box::leak(engine);
+    let shared_engine = static_engine;
 
-    let settings_clone = settings.clone();
+    let app_state = AppState {
+        engine: shared_engine,
+        settings: settings.clone(),
+    };
+
+    let router = build_router(app_state, &settings);
 
     let listen_on = format!("{}:{}", settings.host, settings.port);
     #[cfg(feature = "tracing")]
     tracing::info!("Listen on {}", listen_on);
 
-    web::server_with_config(
-        AppConfig {
-            engine: shared_engine_clone.clone(),
-        },
-        async move |_: &AppState| {
-            let settings = settings_clone.clone();
-
-            App::<AppState>::new()
-                // enable logger
-                .middleware(middleware::Logger::default())
-                .middleware(Cors::default())
-                .configure(move |cfg| routes(cfg, &settings))
-        },
-    )
-    .bind(listen_on, ntex::SharedCfg::default())?
-    .run()
-    .await
+    let listener = tokio::net::TcpListener::bind(&listen_on).await?;
+    topcoat::serve(listener, router).await
 }
 
 #[cfg(test)]
