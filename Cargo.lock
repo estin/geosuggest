@@ -1748,9 +1748,9 @@ dependencies = [
 
 [[package]]
 name = "oaph"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0900becd2ccd8fdb23d12163aa30467f19517cd39c954f9daeaa04dc9ae35c2f"
+checksum = "ccd8ef3b4e2b8b9da40f70e36860b80e249c1cf40adaaa4f5614318b36321e2f"
 dependencies = [
  "schemars",
  "serde",

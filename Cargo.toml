@@ -44,7 +44,7 @@ rkyv = { version = "0.8" }
 
 topcoat = { version = "0.10", default-features = false, features = ["router", "serve"] }
 # service
-oaph = { version = "0.3" }
+oaph = { version = "0.3.2" }
 
 clap = { version = "4.5", features = ["derive"] }
 futures = "0.3"
