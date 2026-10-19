@@ -42,7 +42,7 @@ strsim = "0.11"
 itertools = "0.15"
 rkyv = { version = "0.8" }
 
-topcoat = { version = "0.9", default-features = false, features = ["router", "serve"] }
+topcoat = { version = "0.10", default-features = false, features = ["router", "serve"] }
 # service
 oaph = { version = "0.3" }
 
