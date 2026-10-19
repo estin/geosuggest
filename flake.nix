@@ -56,13 +56,13 @@
 
           topcoatCliSource = pkgs.fetchCrate {
             pname = "topcoat-cli";
-            version = "0.9.0";
-            hash = "sha256-6kLV2AP9e2H8WfmaZ5IwJp3HY3uFD6B0U3qMEvWzWYE=";
+            version = "0.10.0";
+            hash = "sha256-lk13D/RqrskzhXwLNz+KEbWowllQqGxoGU47T4ZdBvk=";
           };
 
           topcoatCli = rustPlatform.buildRustPackage {
             pname = "topcoat-cli";
-            version = "0.9.0";
+            version = "0.10.0";
             src = topcoatCliSource;
             cargoLock.lockFile = "${topcoatCliSource}/Cargo.lock";
             cargoBuildFlags = [ "--bin" "cargo-topcoat" ];
