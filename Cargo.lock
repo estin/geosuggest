@@ -1584,9 +1584,9 @@ dependencies = [
 
 [[package]]
 name = "kiddo"
-version = "6.3.0"
+version = "6.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "032f79d801e9c4308f7aa16456bdd1b05deb43eb96f07d08c0a4f70db3b393b9"
+checksum = "aec3e974af09683a6e0c399a5e929787434102719dbb2614b282e713e2cc00d8"
 dependencies = [
  "aligned-vec",
  "array-init",
