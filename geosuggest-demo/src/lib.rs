@@ -1,7 +1,7 @@
 use geosuggest_core::{Engine, index::ArchivedCitiesRecord};
 use topcoat::{
     Result,
-    context::{Cx, app_context},
+    context::{Cx, context},
     router::page,
     runtime::{Event, Signal, shard, signal},
     view::{View, view},
@@ -178,7 +178,7 @@ pub async fn suggest_results(
         ""
     };
     let results = if message.is_empty() {
-        let engine = app_context::<EngineContext>(cx).engine;
+        let engine = context::<EngineContext>(cx).engine;
         engine
             .suggest(pattern, 10, parsed_score.ok(), None::<&[&str]>)
             .into_iter()
@@ -245,7 +245,7 @@ pub async fn reverse_results(
     }
     let results = if message.is_empty() {
         let (lat, lng) = coordinates.expect("valid coordinates are present without an error");
-        let engine = app_context::<EngineContext>(cx).engine;
+        let engine = context::<EngineContext>(cx).engine;
         engine
             .reverse((lat, lng), 10, parsed_coefficient.ok(), None::<&[&str]>)
             .unwrap_or_default()
@@ -295,7 +295,7 @@ pub async fn reverse_results(
 
 #[shard("/_geosuggest/city")]
 pub async fn city_detail(cx: &Cx, city_id: u32, lang: String) -> Result<impl View> {
-    let engine = app_context::<EngineContext>(cx).engine;
+    let engine = context::<EngineContext>(cx).engine;
     let city = engine
         .get(&city_id)
         .map(|city| city_view(engine, city, &lang));

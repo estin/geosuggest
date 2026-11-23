@@ -16,9 +16,9 @@ use topcoat::router::content::Html;
 #[cfg(feature = "demo")]
 use topcoat::router::RouterBuilderDirectoryExt;
 #[cfg(feature = "demo")]
-use topcoat::runtime::RouterBuilderRuntimeExt;
+use topcoat::runtime::RuntimeLayer;
 use topcoat::{
-    context::{app_context, Cx},
+    context::{context, Cx},
     router::{
         self,
         response::{IntoResponse, Response},
@@ -347,7 +347,7 @@ fn get_country_code<'a>(
 }
 
 async fn city_get(cx: &Cx) -> Result<router::content::Json<GetCityResult<'static>>> {
-    let app = app_context::<AppState>(cx);
+    let app = context::<AppState>(cx);
     let engine = app.engine;
     let query: GetCityQuery =
         router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
@@ -364,7 +364,7 @@ async fn city_get(cx: &Cx) -> Result<router::content::Json<GetCityResult<'static
 }
 
 async fn capital(cx: &Cx) -> Result<router::content::Json<GetCapitalResult<'static>>> {
-    let app = app_context::<AppState>(cx);
+    let app = context::<AppState>(cx);
     let engine = app.engine;
     let query: GetCapitalQuery =
         router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
@@ -407,7 +407,7 @@ async fn capital(cx: &Cx) -> Result<router::content::Json<GetCapitalResult<'stat
 }
 
 async fn suggest(cx: &Cx) -> Result<router::content::Json<SuggestResult<'static>>> {
-    let app = app_context::<AppState>(cx);
+    let app = context::<AppState>(cx);
     let engine = app.engine;
     let query: SuggestQuery =
         router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
@@ -431,7 +431,7 @@ async fn suggest(cx: &Cx) -> Result<router::content::Json<SuggestResult<'static>
 }
 
 async fn reverse(cx: &Cx) -> Result<router::content::Json<ReverseResult<'static>>> {
-    let app = app_context::<AppState>(cx);
+    let app = context::<AppState>(cx);
     let engine = app.engine;
     let query: ReverseQuery =
         router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
@@ -462,7 +462,7 @@ async fn reverse(cx: &Cx) -> Result<router::content::Json<ReverseResult<'static>
 
 #[cfg(feature = "geoip2")]
 async fn geoip2(cx: &Cx) -> Result<router::content::Json<GeoIP2Result<'static>>> {
-    let app = app_context::<AppState>(cx);
+    let app = context::<AppState>(cx);
     let engine = app.engine;
     let query: GeoIP2Query =
         router::parse_query_params(cx).map_err(|e| router::error::bad_request(e.to_string()))?;
@@ -489,7 +489,7 @@ struct StaticIndex(String);
 
 #[cfg(feature = "demo")]
 async fn root_index(cx: &Cx) -> Result<Html<String>> {
-    Ok(Html(app_context::<StaticIndex>(cx).0.clone()))
+    Ok(Html(context::<StaticIndex>(cx).0.clone()))
 }
 
 #[cfg(feature = "swagger")]
@@ -739,7 +739,7 @@ fn build_router_with_assets(
                     root_index_route,
                 ))
                 .serve_dir(route_path(prefix, "/{*file}"), dir)
-                .app_context(StaticIndex(index));
+                .with(StaticIndex(index));
         } else if prefix.is_empty() {
             builder = builder
                 .page(geosuggest_demo::home_page)
@@ -770,12 +770,12 @@ fn build_router_with_assets(
         let engine_context = geosuggest_demo::EngineContext {
             engine: app_state.engine,
         };
-        builder = builder.runtime().app_context(engine_context);
+        builder = builder.layer(RuntimeLayer::new()).with(engine_context);
         if let Some(assets) = _assets {
             builder = builder.assets(assets);
         }
     }
-    builder = builder.app_context(app_state);
+    builder = builder.with(app_state);
     builder.build()
 }
 
