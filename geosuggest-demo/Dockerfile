@@ -1,4 +1,4 @@
-FROM rust:1.99-slim-bookworm
+FROM rust:1.100-slim-trixie
 
 ARG GEOSUGGEST_RELEASE=$GEOSUGGEST_RELEASE
 ARG GEOSUGGEST_INDEX=geosuggest-index.rkyv

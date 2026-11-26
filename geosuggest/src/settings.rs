@@ -13,6 +13,9 @@ pub struct Settings {
     pub static_dir: Option<String>,
     #[builder(default = "/")]
     pub url_path_prefix: String,
+    /// Proxy networks allowed to report the client IP, all are trusted by default
+    #[builder(default = vec!["0.0.0.0/0".into(), "::/0".into()])]
+    pub trusted_proxies: Vec<String>,
     #[cfg(feature = "geoip2")]
     pub geoip2_file: Option<String>,
 }
@@ -40,5 +43,9 @@ mod tests {
         assert_eq!(settings.url_path_prefix, "/");
         assert_eq!(settings.index_file, "");
         assert_eq!(settings.static_dir, None);
+        assert_eq!(settings.trusted_proxies, ["0.0.0.0/0", "::/0"]);
+
+        let settings = Settings::from_toml("trusted_proxies = [\"10.42.0.0/16\"]").unwrap();
+        assert_eq!(settings.trusted_proxies, ["10.42.0.0/16"]);
     }
 }

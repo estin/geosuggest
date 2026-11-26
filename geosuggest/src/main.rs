@@ -23,7 +23,7 @@ use topcoat::{
         self,
         response::{IntoResponse, Response},
         Body, LayerFn, LayerFuture, Method, Next, PathBuf as RouterPathBuf, PathSegment, RouteFn,
-        RouteFuture, Router, StatusCode,
+        RouteFuture, Router, StatusCode, TrustedProxies,
     },
     Result,
 };
@@ -65,7 +65,7 @@ pub struct GetCityQuery {
 pub struct GetCapitalQuery {
     lat: Option<f32>,
     lng: Option<f32>,
-    /// IP to check, if not declared then `Forwarded` header or peer IP will be used
+    /// IP to check, if not declared then the client IP from forwarding headers or the peer address is used
     #[cfg(feature = "geoip2")]
     ip: Option<String>,
     /// geonameid of the City
@@ -140,7 +140,7 @@ pub struct ReverseQuery {
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "swagger", derive(JsonSchema))]
 pub struct GeoIP2Query {
-    /// IP to check, if not declared then `Forwarded` header will used or peer ip as last chance
+    /// IP to check, if not declared then the client IP from forwarding headers or the peer address is used
     ip: Option<String>,
     /// isolanguage code
     lang: Option<String>,
@@ -688,6 +688,7 @@ fn build_router_with_assets(
 ) -> Router {
     let prefix = settings.url_path_prefix.trim_matches('/');
     let mut builder = Router::builder()
+        .trusted_proxies(TrustedProxies::new().networks(&settings.trusted_proxies))
         .route(RouteFn::new(
             Method::GET,
             route_path(prefix, "/api/city/get"),

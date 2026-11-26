@@ -297,6 +297,35 @@ async fn cors_allows_browser_get_and_preflight_requests() {
 
 #[cfg(feature = "geoip2")]
 #[tokio::test]
+async fn geoip_resolves_the_client_ip_through_trusted_proxies() {
+    let peer: SocketAddr = "10.42.0.1:4242".parse().unwrap();
+    let forwarded_request = || {
+        Request::builder()
+            .uri("/api/city/geoip2?lang=ru")
+            .extension(RemoteAddr(peer))
+            .header("x-forwarded-for", "81.2.69.142")
+            .body(Body::empty())
+            .unwrap()
+    };
+
+    // By default every proxy is trusted, so the forwarded address wins
+    let app = build_test_router(settings("/", None));
+    let response = app.handle(forwarded_request()).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["for_ip"], "81.2.69.142");
+    assert_eq!(result["city"]["name"], "Лондон");
+
+    // The setting reaches the router: an untrusted peer keeps its own address
+    let app = build_test_router(Settings::from_toml("trusted_proxies = [\"192.0.2.0/24\"]").unwrap());
+    let response = app.handle(forwarded_request()).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value = serde_json::from_slice(&response_body(response).await).unwrap();
+    assert_eq!(result["for_ip"], "10.42.0.1");
+}
+
+#[cfg(feature = "geoip2")]
+#[tokio::test]
 async fn geoip_uses_the_peer_address_when_no_ip_is_given() {
     let app = build_test_router(settings("/", None));
     let peer: SocketAddr = "81.2.69.142:4242".parse().unwrap();
