@@ -769,8 +769,18 @@ fn build_router_with_assets(
     }
     #[cfg(feature = "demo")]
     {
+        let public_prefix = settings
+            .public_url_prefix
+            .as_deref()
+            .unwrap_or(&settings.url_path_prefix)
+            .trim_matches('/');
         let engine_context = geosuggest_demo::EngineContext {
             engine: app_state.engine,
+            public_prefix: if public_prefix.is_empty() {
+                String::new()
+            } else {
+                format!("/{public_prefix}")
+            },
         };
         builder = builder.layer(RuntimeLayer::new()).with(engine_context);
         if let Some(assets) = _assets {

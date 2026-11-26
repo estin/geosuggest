@@ -220,7 +220,7 @@ async fn demo_page_renders_topcoat_shards_on_the_server() {
         "/test-assets",
         topcoat::asset::Manifest { version: 1, assets },
     );
-    let app = build_test_router_with_assets(settings("/", None), Some(assets));
+    let app = build_test_router_with_assets(settings("/", None), Some(assets.clone()));
     let response = app.handle(request("/")).await;
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -239,6 +239,15 @@ async fn demo_page_renders_topcoat_shards_on_the_server() {
     assert!(html.contains("::topcoat::shard::start(\"/_geosuggest/city\""));
     assert!(html.contains("/test-assets/"));
     assert!(!html.contains("/api/city/"));
+    assert!(html.contains("href=\"/swagger\""));
+
+    let prefixed = Settings::from_toml("public_url_prefix = \"/geosuggest\"").unwrap();
+    let app = build_test_router_with_assets(prefixed, Some(assets));
+    let response = app.handle(request("/")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = String::from_utf8(response_body(response).await).unwrap();
+    assert!(html.contains("href=\"/geosuggest/swagger\""));
+    assert!(html.contains("href=\"/geosuggest/redoc\""));
 }
 
 #[cfg(feature = "demo")]

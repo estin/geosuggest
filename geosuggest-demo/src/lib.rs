@@ -17,6 +17,8 @@ pub fn bundle_assets() -> [topcoat::asset::Asset; 3] {
 #[derive(Clone)]
 pub struct EngineContext {
     pub engine: &'static Engine<'static>,
+    /// Public URL prefix when a proxy strips the routing prefix, "/geosuggest" or ""
+    pub public_prefix: String,
 }
 
 type CityView = (u32, String, String, f32, f32, u32, String);
@@ -46,6 +48,7 @@ fn city_view(engine: &Engine<'_>, city: &ArchivedCitiesRecord, lang: &str) -> Ci
 
 #[page("/")]
 pub async fn home_page(cx: &Cx) -> Result<impl View> {
+    let public_prefix = context::<EngineContext>(cx).public_prefix.clone();
     let query = signal(cx, String::new);
     let language = signal(cx, || "en".to_owned());
     let latitude = signal(cx, String::new);
@@ -138,9 +141,9 @@ pub async fn home_page(cx: &Cx) -> Result<impl View> {
                         <footer class="sidebar-footer">
                             <div>
                                 <strong>"API:"</strong>
-                                <a href="/swagger">"Swagger"</a>
+                                <a href=(format!("{public_prefix}/swagger"))>"Swagger"</a>
                                 <span>"/"</span>
-                                <a href="/redoc">"ReDoc"</a>
+                                <a href=(format!("{public_prefix}/redoc"))>"ReDoc"</a>
                             </div>
                             <div>
                                 <strong>"GitHub:"</strong>
