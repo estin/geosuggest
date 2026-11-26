@@ -516,12 +516,13 @@ async fn redoc(_cx: &Cx) -> Result<Html<String>> {
 fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn std::error::Error>> {
     let openapi3_yaml_path = std::env::temp_dir().join("openapi3.yaml");
 
+    let public_prefix = settings
+        .public_url_prefix
+        .as_deref()
+        .unwrap_or(&settings.url_path_prefix);
     let aoph = OpenApiPlaceHolder::new()
         .substitute("version", VERSION)
-        .substitute(
-            "url_path_prefix",
-            &join_url_path(&settings.url_path_prefix, "/"),
-        );
+        .substitute("url_path_prefix", &join_url_path(public_prefix, "/"));
     let aoph = aoph
         .query_params::<GetCityQuery>("GetCityQuery")?
         .query_params::<GetCapitalQuery>("GetCapitalQuery")?
@@ -544,7 +545,7 @@ fn generate_openapi_files(settings: &settings::Settings) -> Result<(), Box<dyn s
     tracing::info!("openapi3 file: {:?}", openapi3_yaml_path.to_str());
 
     let title = format!("geosuggest v{}", VERSION);
-    let openapi3_url_path = join_url_path(&settings.url_path_prefix, "/openapi3.yaml");
+    let openapi3_url_path = join_url_path(public_prefix, "/openapi3.yaml");
     OpenApiPlaceHolder::swagger_ui_html_to_file(
         &openapi3_url_path,
         &title,

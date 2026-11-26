@@ -131,6 +131,29 @@ async fn capital_suggest_and_reverse_routes_keep_their_results() {
 
 #[cfg(feature = "swagger")]
 #[tokio::test]
+async fn docs_honor_the_public_url_prefix() {
+    let settings =
+        Settings::from_toml("public_url_prefix = \"/geosuggest\"").unwrap();
+    generate_openapi_files(&settings).unwrap();
+    let app = build_test_router(settings);
+
+    let response = app.handle(request("/openapi3.yaml")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(String::from_utf8(response_body(response).await)
+        .unwrap()
+        .contains("url: /geosuggest"));
+
+    for path in ["/swagger", "/redoc"] {
+        let response = app.handle(request(path)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(String::from_utf8(response_body(response).await)
+            .unwrap()
+            .contains("/geosuggest/openapi3.yaml"));
+    }
+}
+
+#[cfg(feature = "swagger")]
+#[tokio::test]
 async fn docs_routes_serve_openapi_swagger_and_redoc() {
     let settings = settings("/geosuggest", None);
     generate_openapi_files(&settings).unwrap();
